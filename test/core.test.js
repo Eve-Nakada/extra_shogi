@@ -5,15 +5,20 @@ import { applyMove } from "../src/core/applyMove.js";
 import { getSquare, setSquare } from "../src/core/coordinates.js";
 import { isInCheck } from "../src/core/check.js";
 import { getLegalMoves } from "../src/core/legalMoveFilter.js";
+import { serializeGameRecord, parseGameRecord, restoreGameRecord } from "../src/core/record.js";
+import { replayHistory } from "../src/core/replay.js";
 import { createInitialState } from "../src/core/state.js";
+import { undoLastMove } from "../src/core/undo.js";
+import { EXPANDED_SHOGI } from "../src/rulesets/expandedShogi.js";
+import { RULESET_BY_ID } from "../src/rulesets/index.js";
 import { STANDARD_SHOGI } from "../src/rulesets/standardShogi.js";
 
-function createEmptyState() {
-  const state = createInitialState(STANDARD_SHOGI);
+function createEmptyState(ruleset = STANDARD_SHOGI) {
+  const state = createInitialState(ruleset);
   state.board.squares = state.board.squares.map(() => null);
-  state.hands = { black: {}, white: {} };
+  state.hands = Object.fromEntries(ruleset.players.map(player => [player, {}]));
   state.history = [];
-  state.turn = "black";
+  state.turn = ruleset.firstTurn ?? ruleset.players[0];
   state.status = { type: "playing", winner: null, reason: null };
   return state;
 }
@@ -60,6 +65,7 @@ test("指し手を適用すると盤面・手番・履歴が更新される", ()
   assert.deepEqual(getSquare(state, 4, 5), { owner: "black", id: "P" });
   assert.equal(state.turn, "white");
   assert.equal(state.history.length, 1);
+  assert.deepEqual(state.history[0].pieceBefore, { owner: "black", id: "P" });
 });
 
 test("取った駒は持ち駒に入る", () => {
@@ -110,4 +116,65 @@ test("王手を放置する無関係な手は生成されない", () => {
 
   assert.equal(isInCheck(state, "black"), true);
   assert.deepEqual(getLegalMoves(state, { kind: "board", x: 0, y: 8 }), []);
+});
+
+test("1手戻すと盤面・手番・履歴が戻る", () => {
+  const state = createInitialState(STANDARD_SHOGI);
+  const [move] = getLegalMoves(state, { kind: "board", x: 4, y: 6 });
+  applyMove(state, move);
+
+  assert.equal(undoLastMove(state), true);
+  assert.deepEqual(getSquare(state, 4, 6), { owner: "black", id: "P" });
+  assert.equal(getSquare(state, 4, 5), null);
+  assert.equal(state.turn, "black");
+  assert.equal(state.history.length, 0);
+});
+
+test("棋譜履歴から任意手数の局面を再生できる", () => {
+  const state = createInitialState(STANDARD_SHOGI);
+  applyMove(state, getLegalMoves(state, { kind: "board", x: 4, y: 6 })[0]);
+  applyMove(state, getLegalMoves(state, { kind: "board", x: 4, y: 2 })[0]);
+
+  const replayed = replayHistory(STANDARD_SHOGI, state.history, 1);
+
+  assert.deepEqual(getSquare(replayed, 4, 5), { owner: "black", id: "P" });
+  assert.deepEqual(getSquare(replayed, 4, 2), { owner: "white", id: "P" });
+  assert.equal(replayed.turn, "white");
+  assert.equal(replayed.history.length, 1);
+});
+
+test("JSON保存データを復元できる", () => {
+  const state = createInitialState(STANDARD_SHOGI);
+  applyMove(state, getLegalMoves(state, { kind: "board", x: 4, y: 6 })[0]);
+
+  const record = parseGameRecord(serializeGameRecord(state));
+  const restored = restoreGameRecord(record, RULESET_BY_ID);
+
+  assert.equal(restored.rulesetId, "standard-shogi");
+  assert.deepEqual(getSquare(restored, 4, 5), { owner: "black", id: "P" });
+  assert.equal(restored.turn, "white");
+  assert.equal(restored.history.length, 1);
+});
+
+test("拡張検証ルールセットは11x11盤面と追加駒を持つ", () => {
+  const state = createInitialState(EXPANDED_SHOGI);
+
+  assert.equal(state.board.width, 11);
+  assert.equal(state.board.height, 11);
+  assert.equal(EXPANDED_SHOGI.pieces.M.display, "麒");
+  assert.equal(EXPANDED_SHOGI.pieces.C.promotesTo, "PC");
+  assert.equal(getSquare(state, 5, 9)?.id, "M");
+});
+
+test("拡張検証ルールセットの追加駒はデータ定義だけで合法手を生成できる", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  put(state, "black", "M", 5, 5);
+
+  const moves = getLegalMoves(state, { kind: "board", x: 5, y: 5 });
+
+  assert.equal(hasMoveTo(moves, 5, 3), true);
+  assert.equal(hasMoveTo(moves, 3, 5), true);
+  assert.equal(hasMoveTo(moves, 6, 6), true);
 });

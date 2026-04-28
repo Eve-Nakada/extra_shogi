@@ -22,7 +22,8 @@ body {
   background: #f4f4f4;
 }
 
-button {
+button,
+select {
   font: inherit;
 }
 
@@ -48,12 +49,73 @@ button {
   font-size: 14px;
 }
 
-.game-panel {
-  padding: 14px;
+.toolbar,
+.game-panel,
+.record-panel {
   background: var(--panel);
   border: 1px solid #ddd1bd;
   border-radius: 10px;
   box-shadow: 0 2px 10px rgb(0 0 0 / 8%);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.ruleset-select {
+  min-width: 180px;
+  padding: 5px 8px;
+  border: 1px solid #aaa;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.toolbar-group,
+.replay-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.message {
+  min-height: 20px;
+  margin: 4px 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.game-panel {
+  padding: 14px;
+}
+
+.record-panel {
+  width: 300px;
+  max-height: calc((var(--board-height, 9) * var(--square-size)) + 150px);
+  padding: 12px;
+  overflow: auto;
+}
+
+.record-panel h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
 }
 
 .status-row {
@@ -77,14 +139,10 @@ button {
   color: var(--danger);
 }
 
-.actions {
-  display: flex;
-  gap: 8px;
-}
-
 .action-button,
 .hand-piece,
-.square {
+.square,
+.history-button {
   cursor: pointer;
 }
 
@@ -95,8 +153,14 @@ button {
   background: #fff;
 }
 
-.action-button:hover {
+.action-button:hover:not(:disabled),
+.history-button:hover {
   background: #f1f1f1;
+}
+
+.action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .board {
@@ -224,6 +288,51 @@ button {
   font-size: 14px;
 }
 
+.history-list {
+  margin: 10px 0 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.history-item + .history-item {
+  margin-top: 4px;
+}
+
+.history-button {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d7c8aa;
+  border-radius: 6px;
+  background: #fffdf7;
+  text-align: left;
+  font-size: 14px;
+}
+
+.history-button.current {
+  outline: 3px solid var(--selected);
+  outline-offset: 1px;
+}
+
+.history-empty {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.hidden-file {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .record-panel {
+    width: 100%;
+    max-height: none;
+  }
+}
+
 @media (max-width: 560px) {
   :root {
     --square-size: 38px;
@@ -233,7 +342,9 @@ button {
     margin-top: 10px;
   }
 
-  .game-panel {
+  .game-panel,
+  .record-panel,
+  .toolbar {
     padding: 8px;
   }
 

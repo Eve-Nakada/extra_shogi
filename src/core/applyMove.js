@@ -4,12 +4,12 @@ import { getSquare, setSquare } from "./coordinates.js";
 export function applyMove(state, move, options = {}) {
   const { updateTurn = true, updateHistory = true } = options;
   const mover = state.turn;
-  let captured = null;
+  let result;
 
   if (move.kind === "move") {
-    captured = applyBoardMove(state, mover, move);
+    result = applyBoardMove(state, mover, move);
   } else if (move.kind === "drop") {
-    applyDropMove(state, mover, move);
+    result = applyDropMove(state, mover, move);
   } else {
     throw new Error(`未知の指し手種別です: ${move.kind}`);
   }
@@ -18,7 +18,9 @@ export function applyMove(state, move, options = {}) {
     state.history.push({
       turn: mover,
       move: cloneMove(move),
-      captured: captured ? { ...captured } : null
+      captured: result.captured ? { ...result.captured } : null,
+      pieceBefore: result.pieceBefore ? { ...result.pieceBefore } : null,
+      pieceAfter: result.pieceAfter ? { ...result.pieceAfter } : null
     });
   }
 
@@ -29,7 +31,9 @@ export function applyMove(state, move, options = {}) {
   return {
     turn: mover,
     move: cloneMove(move),
-    captured
+    captured: result.captured,
+    pieceBefore: result.pieceBefore,
+    pieceAfter: result.pieceAfter
   };
 }
 
@@ -54,13 +58,19 @@ function applyBoardMove(state, mover, move) {
     addCapturedPieceToHand(state, mover, target);
   }
 
-  setSquare(state, move.from.x, move.from.y, null);
-  setSquare(state, move.to.x, move.to.y, {
+  const pieceAfter = {
     owner: mover,
     id: move.promoteTo ?? piece.id
-  });
+  };
 
-  return target ? { ...target } : null;
+  setSquare(state, move.from.x, move.from.y, null);
+  setSquare(state, move.to.x, move.to.y, pieceAfter);
+
+  return {
+    captured: target ? { ...target } : null,
+    pieceBefore: { ...piece },
+    pieceAfter: { ...pieceAfter }
+  };
 }
 
 function applyDropMove(state, mover, move) {
@@ -78,10 +88,18 @@ function applyDropMove(state, mover, move) {
     delete state.hands[mover][move.pieceId];
   }
 
-  setSquare(state, move.to.x, move.to.y, {
+  const pieceAfter = {
     owner: mover,
     id: move.pieceId
-  });
+  };
+
+  setSquare(state, move.to.x, move.to.y, pieceAfter);
+
+  return {
+    captured: null,
+    pieceBefore: null,
+    pieceAfter
+  };
 }
 
 function addCapturedPieceToHand(state, owner, capturedPiece) {
