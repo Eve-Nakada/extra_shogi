@@ -23,7 +23,8 @@ body {
 }
 
 button,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -50,6 +51,7 @@ select {
 }
 
 .toolbar,
+.online-panel,
 .game-panel,
 .record-panel {
   background: var(--panel);
@@ -323,6 +325,14 @@ select {
 }
 
 @media (max-width: 900px) {
+  .signal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .online-header {
+    flex-direction: column;
+  }
+
   .layout {
     flex-direction: column;
   }
@@ -344,6 +354,7 @@ select {
 
   .game-panel,
   .record-panel,
+  .online-panel,
   .toolbar {
     padding: 8px;
   }
@@ -357,5 +368,95 @@ select {
   .status-row {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+
+.online-panel {
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.online-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.online-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.online-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.online-badges span {
+  padding: 4px 7px;
+  border: 1px solid #d7c8aa;
+  border-radius: 999px;
+  background: #fffdf7;
+}
+
+.online-steps {
+  margin: 0 0 10px 1.4em;
+  padding: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.online-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.signal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.signal-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-weight: 700;
+}
+
+.signal-textarea {
+  width: 100%;
+  min-height: 124px;
+  padding: 8px;
+  border: 1px solid #d7c8aa;
+  border-radius: 6px;
+  background: #fffdf7;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+@media (max-width: 900px) {
+  .signal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .online-header {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .online-panel {
+    padding: 8px;
   }
 }
