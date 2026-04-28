@@ -1,6 +1,8 @@
 import { replayHistory } from "./replay.js";
 import { cloneMove } from "./state.js";
 import { cloneClock } from "./clock.js";
+import { createPositionHash, detectRepetition } from "./repetition.js";
+import { evaluateImpasse } from "./impasse.js";
 
 const CURRENT_RECORD_VERSION = 1;
 
@@ -11,7 +13,10 @@ export function createGameRecord(state) {
     savedAt: new Date().toISOString(),
     rulesetId: state.rulesetId,
     turn: state.turn,
-    status: { ...state.status },
+    status: cloneStatus(state.status),
+    positionHash: createPositionHash(state),
+    repetition: detectRepetition(state),
+    impasse: evaluateImpasse(state),
     clock: cloneClock(state.clock),
     history: state.history.map(entry => ({
       turn: entry.turn,
@@ -50,7 +55,7 @@ export function restoreGameRecord(record, rulesetsById) {
   const history = record.history ?? [];
   const state = replayHistory(ruleset, history, history.length);
   state.turn = record.turn ?? state.turn;
-  state.status = record.status ?? {
+  state.status = record.status ? cloneStatus(record.status) : {
     type: "playing",
     winner: null,
     reason: null
@@ -82,4 +87,9 @@ function validateGameRecord(record) {
       throw new Error(`history[${index}] の形式が不正です。`);
     }
   }
+}
+
+function cloneStatus(status) {
+  if (!status) return status;
+  return JSON.parse(JSON.stringify(status));
 }
