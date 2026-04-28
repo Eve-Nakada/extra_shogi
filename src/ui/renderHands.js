@@ -25,7 +25,7 @@ export function renderHands(handElement, state, owner, uiState) {
       button.className = "hand-piece";
       button.dataset.owner = owner;
       button.dataset.pieceId = pieceId;
-      button.disabled = state.status.type !== "playing" || owner !== state.turn;
+      button.disabled = uiState.readonly || state.status.type !== "playing" || owner !== state.turn;
       button.textContent = `${pieceDef?.display ?? pieceId}×${count}`;
       button.title = pieceDef?.name ?? pieceId;
 

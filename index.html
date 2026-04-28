@@ -13,21 +13,53 @@
       <p class="note">通信なし・ブラウザ内完結のローカル対局版</p>
     </header>
 
-    <section class="game-panel" aria-label="将棋盤">
-      <div id="white-hand" class="hand" aria-label="後手の持ち駒"></div>
+    <section class="toolbar" aria-label="ゲーム設定と保存">
+      <label class="field-label" for="ruleset-select">
+        ルールセット
+        <select id="ruleset-select" class="ruleset-select"></select>
+      </label>
 
-      <div class="status-row">
-        <div id="status" class="status" role="status" aria-live="polite"></div>
-        <div class="actions">
-          <button id="resign-button" class="action-button" type="button">投了</button>
-          <button id="reset-button" class="action-button" type="button">初期化</button>
-        </div>
+      <div class="toolbar-group" aria-label="局面操作">
+        <button id="undo-button" class="action-button" type="button">1手戻す</button>
+        <button id="reset-button" class="action-button" type="button">初期化</button>
+        <button id="resign-button" class="action-button" type="button">投了</button>
       </div>
 
-      <div id="board" class="board" aria-label="盤面"></div>
-
-      <div id="black-hand" class="hand" aria-label="先手の持ち駒"></div>
+      <div class="toolbar-group" aria-label="保存と読み込み">
+        <button id="save-local-button" class="action-button" type="button">ローカル保存</button>
+        <button id="load-local-button" class="action-button" type="button">ローカル読込</button>
+        <button id="export-button" class="action-button" type="button">JSON書出</button>
+        <button id="import-button" class="action-button" type="button">JSON読込</button>
+        <input id="import-input" class="hidden-file" type="file" accept="application/json,.json">
+      </div>
     </section>
+
+    <p id="message" class="message" aria-live="polite"></p>
+
+    <div class="layout">
+      <section class="game-panel" aria-label="将棋盤">
+        <div id="white-hand" class="hand" aria-label="後手の持ち駒"></div>
+
+        <div class="status-row">
+          <div id="status" class="status" role="status" aria-live="polite"></div>
+        </div>
+
+        <div id="board" class="board" aria-label="盤面"></div>
+
+        <div id="black-hand" class="hand" aria-label="先手の持ち駒"></div>
+      </section>
+
+      <aside class="record-panel" aria-label="棋譜ログ">
+        <h2>棋譜ログ</h2>
+        <div class="replay-controls" aria-label="棋譜再生">
+          <button id="replay-start-button" class="action-button" type="button">開始</button>
+          <button id="replay-prev-button" class="action-button" type="button">前へ</button>
+          <button id="replay-next-button" class="action-button" type="button">次へ</button>
+          <button id="replay-end-button" class="action-button" type="button">最新</button>
+        </div>
+        <ol id="history-list" class="history-list"></ol>
+      </aside>
+    </div>
   </main>
 
   <script type="module" src="./src/main.js"></script>

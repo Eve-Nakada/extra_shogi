@@ -51,12 +51,18 @@ export function cloneState(state) {
     },
     turn: state.turn,
     hands: cloneHands(state.hands),
-    history: state.history.map(entry => ({
-      turn: entry.turn,
-      move: cloneMove(entry.move),
-      captured: entry.captured ? { ...entry.captured } : null
-    })),
+    history: state.history.map(cloneHistoryEntry),
     status: { ...state.status }
+  };
+}
+
+export function cloneHistoryEntry(entry) {
+  return {
+    turn: entry.turn,
+    move: cloneMove(entry.move),
+    captured: entry.captured ? { ...entry.captured } : null,
+    pieceBefore: entry.pieceBefore ? { ...entry.pieceBefore } : null,
+    pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null
   };
 }
 
