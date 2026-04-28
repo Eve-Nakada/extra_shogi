@@ -1,10 +1,10 @@
 {
   "name": "shogi-html",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test --test-reporter tap --test-force-exit",
+    "test": "node --test --test-reporter spec test/core.test.js",
     "serve": "python3 -m http.server 8000"
   }
 }

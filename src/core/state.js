@@ -1,4 +1,5 @@
 import { setSquare } from "./coordinates.js";
+import { cloneClock } from "./clock.js";
 
 export function createInitialState(ruleset) {
   const width = ruleset.board.width;
@@ -19,7 +20,8 @@ export function createInitialState(ruleset) {
       type: "playing",
       winner: null,
       reason: null
-    }
+    },
+    clock: null
   };
 
   for (const item of ruleset.initialPieces) {
@@ -52,7 +54,8 @@ export function cloneState(state) {
     turn: state.turn,
     hands: cloneHands(state.hands),
     history: state.history.map(cloneHistoryEntry),
-    status: { ...state.status }
+    status: { ...state.status },
+    clock: cloneClock(state.clock)
   };
 }
 
@@ -105,5 +108,6 @@ export function opposite(stateOrRuleset, player) {
 }
 
 export function playerName(player) {
+  if (player === "spectator") return "観戦者";
   return player === "black" ? "先手" : "後手";
 }

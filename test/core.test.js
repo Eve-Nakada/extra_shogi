@@ -253,3 +253,54 @@ test("WebRTC接続コードを検証して読み込める", () => {
   assert.equal(parsed.gameId, "game-test");
   assert.equal(parsed.description.type, "offer");
 });
+
+import { createClock, startClock, switchClockAfterMove, getDisplayRemainingMs, pauseClock } from "../src/core/clock.js";
+import { createClockMessage, applyIncomingClock } from "../src/net/gameSync.js";
+
+test("持ち時間は手番側の経過時間を差し引き、指し手後に相手へ切り替わる", () => {
+  const state = createInitialState(STANDARD_SHOGI);
+  state.clock = createClock({ enabled: true, initialMs: 60000, incrementMs: 1000 }, state.ruleset.players);
+  startClock(state.clock, "black", 1000);
+
+  assert.equal(getDisplayRemainingMs(state.clock, "black", 11000), 50000);
+
+  switchClockAfterMove(state.clock, "black", state.ruleset, 11000);
+
+  assert.equal(state.clock.activePlayer, "white");
+  assert.equal(state.clock.remainingMs.black, 51000);
+  assert.equal(state.clock.running, true);
+});
+
+test("時計メッセージは同じ手数の局面へ反映できる", () => {
+  const source = createInitialState(STANDARD_SHOGI);
+  source.clock = createClock({ enabled: true, initialMs: 30000, incrementMs: 0 }, source.ruleset.players);
+  startClock(source.clock, "black", 1000);
+  pauseClock(source.clock, 6000);
+
+  const target = createInitialState(STANDARD_SHOGI);
+  const result = applyIncomingClock(target, createClockMessage(source));
+
+  assert.equal(result.ok, true);
+  assert.equal(target.clock.remainingMs.black, 25000);
+  assert.equal(target.clock.running, false);
+});
+
+test("観戦用接続コードはroleHintを含む形式として検証できる", () => {
+  const signal = JSON.stringify({
+    app: "shogi-html",
+    kind: "webrtc-signal",
+    version: 2,
+    type: "reconnect-offer",
+    gameId: "game-v06",
+    reconnectToken: "token-v06",
+    roleHint: "host",
+    description: { type: "offer", sdp: "v=0\r\n" },
+    createdAt: "2026-04-28T00:00:00.000Z"
+  });
+
+  const parsed = parseSignal(signal, "reconnect-offer");
+
+  assert.equal(parsed.gameId, "game-v06");
+  assert.equal(parsed.reconnectToken, "token-v06");
+  assert.equal(parsed.roleHint, "host");
+});

@@ -1,5 +1,6 @@
 import { replayHistory } from "./replay.js";
 import { cloneMove } from "./state.js";
+import { cloneClock } from "./clock.js";
 
 const CURRENT_RECORD_VERSION = 1;
 
@@ -11,6 +12,7 @@ export function createGameRecord(state) {
     rulesetId: state.rulesetId,
     turn: state.turn,
     status: { ...state.status },
+    clock: cloneClock(state.clock),
     history: state.history.map(entry => ({
       turn: entry.turn,
       move: cloneMove(entry.move),
@@ -53,6 +55,7 @@ export function restoreGameRecord(record, rulesetsById) {
     winner: null,
     reason: null
   };
+  state.clock = cloneClock(record.clock);
 
   return state;
 }

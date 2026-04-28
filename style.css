@@ -460,3 +460,48 @@ textarea {
     padding: 8px;
   }
 }
+
+.clock-panel {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #ddd1bd;
+  border-radius: 10px;
+  background: #fffdf7;
+}
+
+.clock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.clock-header h2,
+.online-header h2,
+.record-panel h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.clock-display {
+  padding: 6px 10px;
+  border: 1px solid #d7c8aa;
+  border-radius: 6px;
+  background: #f6f1e7;
+  font-weight: 700;
+}
+
+.clock-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+
+.number-input {
+  width: 76px;
+  padding: 5px 6px;
+  border: 1px solid #aaa;
+  border-radius: 6px;
+}
