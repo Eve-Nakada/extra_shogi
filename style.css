@@ -505,3 +505,73 @@ textarea {
   border: 1px solid #aaa;
   border-radius: 6px;
 }
+
+.connection-detail {
+  margin: 10px 0;
+  padding: 8px 10px;
+  border: 1px solid #d7c8aa;
+  border-radius: 6px;
+  background: #fffdf7;
+  color: #333;
+  font-size: 13px;
+}
+
+.connection-log-panel {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid #d7c8aa;
+  border-radius: 8px;
+  background: #fffdf7;
+}
+
+.connection-log-panel summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.connection-log-actions {
+  margin: 8px 0;
+}
+
+.connection-log {
+  max-height: 180px;
+  overflow: auto;
+  margin: 0;
+  padding-left: 22px;
+  font-size: 13px;
+}
+
+.connection-log-item {
+  margin: 4px 0;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: #f7f1e6;
+}
+
+.connection-log-item.in {
+  border-left: 4px solid #1c8f3a;
+}
+
+.connection-log-item.out {
+  border-left: 4px solid #2d6cdf;
+}
+
+.connection-log-item.error {
+  border-left: 4px solid var(--danger);
+}
+
+.connection-log-meta {
+  display: inline-block;
+  min-width: 150px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.connection-log-text {
+  color: var(--text);
+}
+
+.connection-log-empty {
+  color: var(--muted);
+}

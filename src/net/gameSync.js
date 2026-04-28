@@ -5,7 +5,7 @@ import { createGameRecord } from "../core/record.js";
 import { cloneClock } from "../core/clock.js";
 import { cloneHistoryEntry, cloneMove } from "../core/state.js";
 
-export const WIRE_PROTOCOL_VERSION = 2;
+export const WIRE_PROTOCOL_VERSION = 3;
 
 export function createSyncMessage(state) {
   return {
@@ -48,6 +48,33 @@ export function createClockMessage(state) {
     protocolVersion: WIRE_PROTOCOL_VERSION,
     seq: state.history.length,
     clock: cloneClock(state.clock)
+  };
+}
+
+export function createSyncRequestMessage(state, reason = "manual") {
+  return {
+    type: "sync-request",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    seq: state.history.length,
+    reason,
+    clock: cloneClock(state.clock)
+  };
+}
+
+export function createPingMessage(state) {
+  return {
+    type: "ping",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    seq: state.history.length
+  };
+}
+
+export function createPongMessage(state, pingMessage = {}) {
+  return {
+    type: "pong",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    seq: state.history.length,
+    pingSentAt: pingMessage.sentAt ?? null
   };
 }
 
@@ -168,7 +195,7 @@ export function sameMove(a, b) {
   return false;
 }
 
-function isCompatibleProtocol(version) {
-  // v0.6 accepts v0.5 messages without clock fields.
-  return version === 1 || version === WIRE_PROTOCOL_VERSION;
+export function isCompatibleProtocol(version) {
+  // v0.7 accepts v0.5/v0.6 messages. Older messages simply lack clock or sync-request fields.
+  return version === 1 || version === 2 || version === WIRE_PROTOCOL_VERSION;
 }

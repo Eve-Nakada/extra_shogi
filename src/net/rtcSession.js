@@ -22,7 +22,12 @@ export class RtcGameSession {
       gameId: this.gameId,
       reconnectToken: this.reconnectToken,
       connected: this.isConnected(),
-      spectating: this.localPlayer === "spectator"
+      spectating: this.localPlayer === "spectator",
+      connectionState: this.peerConnection?.connectionState ?? null,
+      iceConnectionState: this.peerConnection?.iceConnectionState ?? null,
+      iceGatheringState: this.peerConnection?.iceGatheringState ?? null,
+      channelState: this.channel?.readyState ?? null,
+      peerCount: this.peerConnection ? 1 : 0
     };
   }
 
@@ -43,7 +48,7 @@ export class RtcGameSession {
     this.setStatus("creating-offer");
 
     this.peerConnection = this.createPeerConnection();
-    this.channel = this.peerConnection.createDataChannel("shogi-html-v06", {
+    this.channel = this.peerConnection.createDataChannel("shogi-html-v07", {
       ordered: true
     });
     this.setupDataChannel(this.channel);
@@ -234,7 +239,7 @@ export class RtcGameSession {
   async createOfferWithIdentity(type) {
     this.setStatus("creating-offer");
     this.peerConnection = this.createPeerConnection();
-    this.channel = this.peerConnection.createDataChannel("shogi-html-v06", { ordered: true });
+    this.channel = this.peerConnection.createDataChannel("shogi-html-v07", { ordered: true });
     this.setupDataChannel(this.channel);
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
@@ -282,7 +287,7 @@ function createSignalEnvelope({ type, gameId, reconnectToken, roleHint, descript
   return {
     app: "shogi-html",
     kind: "webrtc-signal",
-    version: 2,
+    version: 3,
     type,
     gameId,
     reconnectToken,
@@ -326,4 +331,20 @@ function createId() {
 
   const random = Math.random().toString(36).slice(2);
   return `game-${Date.now()}-${random}`;
+}
+
+
+export function summarizeSignal(signal) {
+  const parsed = typeof signal === "string" ? parseSignal(signal, null) : signal;
+  const type = parsed.type ?? "unknown";
+  const role = parsed.roleHint ?? "unknown";
+  const gameId = parsed.gameId ? String(parsed.gameId).slice(0, 8) : "-";
+  return `${type} / ${role} / ${gameId}`;
+}
+
+export function canAcceptSignalForCurrentSession(signal, snapshot = {}) {
+  const parsed = typeof signal === "string" ? parseSignal(signal, null) : signal;
+  if (!snapshot.gameId) return true;
+  if (parsed.type === "offer") return true;
+  return parsed.gameId === snapshot.gameId;
 }
