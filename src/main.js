@@ -10,6 +10,7 @@ const elements = {
   message: document.getElementById("message"),
   rulesetSelect: document.getElementById("ruleset-select"),
   resignButton: document.getElementById("resign-button"),
+  impasseButton: document.getElementById("impasse-button"),
   resetButton: document.getElementById("reset-button"),
   undoButton: document.getElementById("undo-button"),
   replayStartButton: document.getElementById("replay-start-button"),

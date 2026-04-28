@@ -1,7 +1,7 @@
 import { applyMove } from "../core/applyMove.js";
 import { createClock, formatClockMs, getDisplayRemainingMs, pauseClock, startClock, switchClockAfterMove, updateClock } from "../core/clock.js";
 import { getSquare } from "../core/coordinates.js";
-import { createStatusText, isCurrentTurnInCheck, resign, updateGameStatus } from "../core/gameStatus.js";
+import { createStatusText, declareImpasse, isCurrentTurnInCheck, resign, updateGameStatus } from "../core/gameStatus.js";
 import { getLegalMoves } from "../core/legalMoveFilter.js";
 import { parseGameRecord, restoreGameRecord, serializeGameRecord } from "../core/record.js";
 import { replayHistory } from "../core/replay.js";
@@ -103,6 +103,25 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       clearSelection();
       clearReplay();
       renderAll();
+    });
+
+    elements.impasseButton.addEventListener("click", () => {
+      if (state.status.type !== "playing" || isReplayMode()) return;
+      if (onlineSession.isOnlineMode() && !onlineSession.isConnected()) return;
+
+      const result = declareImpasse(state);
+      if (result.type === "rejected") {
+        const scores = result.detail?.scores ?? {};
+        setMessage(`持将棋判定はまだ成立しません。先手${scores.black ?? "-"}点 / 後手${scores.white ?? "-"}点。双方の玉が敵陣に入っている必要があります。`);
+        renderAll();
+        return;
+      }
+
+      if (onlineSession.isConnected()) sendSyncMessage();
+      clearSelection();
+      clearReplay();
+      renderAll();
+      setMessage("持将棋判定を反映しました。");
     });
 
     elements.resignButton.addEventListener("click", () => {
@@ -550,6 +569,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.clockApplyButton.disabled = onlineMode || isReplayMode();
     elements.clockPauseButton.disabled = !state.clock?.config?.enabled;
 
+    elements.impasseButton.disabled = state.status.type !== "playing" || isReplayMode() || (onlineMode && !onlineConnected);
     elements.resignButton.disabled = !canResign;
     elements.resignButton.textContent = `${playerName(getLocalResigningPlayer())} 投了`;
 
@@ -583,13 +603,9 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function createDisplayStatusText(displayState) {
     let base;
-    if (displayState.status.type === "ended" && displayState.status.reason === "time") {
-      base = `時間切れ：${playerName(displayState.status.winner)}の勝ち`;
-    } else {
-      base = isReplayMode()
-        ? `${createStatusText(displayState)} / 再生 ${uiState.replayIndex}/${state.history.length}`
-        : createStatusText(displayState);
-    }
+    base = isReplayMode()
+      ? `${createStatusText(displayState)} / 再生 ${uiState.replayIndex}/${state.history.length}`
+      : createStatusText(displayState);
 
     if (!onlineSession.isOnlineMode()) return base;
     const snapshot = onlineSession.getSnapshot();

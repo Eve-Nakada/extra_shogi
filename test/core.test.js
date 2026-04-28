@@ -352,3 +352,73 @@ test("v0.7 接続診断テキストと接続コード要約を作れる", () => 
   assert.equal(canAcceptSignalForCurrentSession(signal, { gameId: "other-game" }), false);
   assert.equal(createSnapshotText({ status: "connected", connected: true, role: "host", localPlayer: "black", channelState: "open", peerCount: 1 }).includes("dc=open"), true);
 });
+
+import { createPositionHash, detectRepetition } from "../src/core/repetition.js";
+import { calculateImpasseScore, evaluateImpasse } from "../src/core/impasse.js";
+import { declareImpasse, updateGameStatus as updateStatusWithRules } from "../src/core/gameStatus.js";
+
+test("局面ハッシュは手番・盤面・持ち駒を含めて比較できる", () => {
+  const a = createInitialState(STANDARD_SHOGI);
+  const b = createInitialState(STANDARD_SHOGI);
+
+  assert.equal(createPositionHash(a), createPositionHash(b));
+
+  b.turn = "white";
+  assert.notEqual(createPositionHash(a), createPositionHash(b));
+
+  b.turn = "black";
+  b.hands.black.P = 1;
+  assert.notEqual(createPositionHash(a), createPositionHash(b));
+});
+
+test("同一局面が4回出現すると千日手として終了する", () => {
+  const state = createInitialState(STANDARD_SHOGI);
+
+  const cycle = [
+    { kind: "move", from: { x: 4, y: 6 }, to: { x: 4, y: 5 }, promoteTo: null },
+    { kind: "move", from: { x: 4, y: 2 }, to: { x: 4, y: 3 }, promoteTo: null },
+    { kind: "move", from: { x: 4, y: 5 }, to: { x: 4, y: 6 }, promoteTo: null },
+    { kind: "move", from: { x: 4, y: 3 }, to: { x: 4, y: 2 }, promoteTo: null }
+  ];
+
+  for (let i = 0; i < 3; i += 1) {
+    for (const move of cycle) {
+      applyMove(state, move);
+      updateStatusWithRules(state);
+    }
+  }
+
+  const repetition = detectRepetition(state);
+  assert.equal(repetition.repeated, true);
+  assert.equal(repetition.type, "sennichite");
+  assert.equal(state.status.reason, "sennichite");
+  assert.equal(state.status.winner, null);
+});
+test("持将棋の点数計算は飛角を5点、その他を1点として扱う", () => {
+  const state = createEmptyState();
+  put(state, "black", "K", 4, 0);
+  put(state, "white", "K", 4, 8);
+  put(state, "black", "R", 0, 0);
+  put(state, "black", "B", 1, 0);
+  state.hands.black.P = 3;
+
+  assert.equal(calculateImpasseScore(state, "black"), 13);
+});
+
+test("双方の玉が敵陣に入り24点以上なら持将棋は引き分けになる", () => {
+  const state = createEmptyState();
+  put(state, "black", "K", 4, 0);
+  put(state, "white", "K", 4, 8);
+  state.hands.black.P = 24;
+  state.hands.white.P = 24;
+
+  const evaluation = evaluateImpasse(state);
+  assert.equal(evaluation.ready, true);
+  assert.equal(evaluation.winner, null);
+
+  const status = declareImpasse(state);
+  assert.equal(status.type, "ended");
+  assert.equal(status.reason, "impasse");
+  assert.equal(status.winner, null);
+});
+
