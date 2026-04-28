@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ローカル将棋</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main id="app" class="app">
+    <header class="app-header">
+      <h1>ローカル将棋</h1>
+      <p class="note">通信なし・ブラウザ内完結のローカル対局版</p>
+    </header>
+
+    <section class="game-panel" aria-label="将棋盤">
+      <div id="white-hand" class="hand" aria-label="後手の持ち駒"></div>
+
+      <div class="status-row">
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+        <div class="actions">
+          <button id="resign-button" class="action-button" type="button">投了</button>
+          <button id="reset-button" class="action-button" type="button">初期化</button>
+        </div>
+      </div>
+
+      <div id="board" class="board" aria-label="盤面"></div>
+
+      <div id="black-hand" class="hand" aria-label="先手の持ち駒"></div>
+    </section>
+  </main>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

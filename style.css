@@ -1,0 +1,250 @@
+:root {
+  --square-size: 52px;
+  --board-border: #5a3a16;
+  --board-bg: #d9a441;
+  --board-bg-alt: #e8b95a;
+  --selected: #2d6cdf;
+  --legal: #1c8f3a;
+  --danger: #b42318;
+  --text: #1f1f1f;
+  --muted: #666;
+  --panel: #f6f1e7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text);
+  background: #f4f4f4;
+}
+
+button {
+  font: inherit;
+}
+
+.app {
+  width: max-content;
+  max-width: 100%;
+  margin: 24px auto;
+  padding: 0 12px 24px;
+}
+
+.app-header {
+  margin-bottom: 12px;
+}
+
+.app-header h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.game-panel {
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid #ddd1bd;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 8%);
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0;
+}
+
+.status {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #d7c8aa;
+  border-radius: 6px;
+  background: #fffdf7;
+  font-weight: 700;
+}
+
+.status.check {
+  color: var(--danger);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-button,
+.hand-piece,
+.square {
+  cursor: pointer;
+}
+
+.action-button {
+  padding: 6px 10px;
+  border: 1px solid #aaa;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.action-button:hover {
+  background: #f1f1f1;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(var(--board-width), var(--square-size));
+  grid-template-rows: repeat(var(--board-height), var(--square-size));
+  width: max-content;
+  border: 3px solid var(--board-border);
+  background: var(--board-border);
+  gap: 1px;
+  user-select: none;
+}
+
+.square {
+  position: relative;
+  width: var(--square-size);
+  height: var(--square-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: var(--board-bg);
+  color: var(--text);
+  padding: 0;
+}
+
+.square:nth-child(even) {
+  background: var(--board-bg-alt);
+}
+
+.square:hover {
+  filter: brightness(1.04);
+}
+
+.square.selected {
+  outline: 3px solid var(--selected);
+  outline-offset: -4px;
+}
+
+.square.legal::after {
+  content: "";
+  position: absolute;
+  inset: 15px;
+  border-radius: 50%;
+  background: rgb(28 143 58 / 45%);
+  pointer-events: none;
+}
+
+.square.legal.capture::after {
+  inset: 6px;
+  border: 3px solid rgb(180 35 24 / 75%);
+  background: transparent;
+}
+
+.piece {
+  position: relative;
+  z-index: 1;
+  min-width: 34px;
+  min-height: 40px;
+  padding: 2px 4px 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #7b5625;
+  border-radius: 8px 8px 5px 5px;
+  background: #f9d990;
+  font-weight: 800;
+  font-size: 21px;
+  line-height: 1;
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 10%);
+}
+
+.piece.white {
+  transform: rotate(180deg);
+}
+
+.piece.promoted {
+  color: #b42318;
+}
+
+.hand {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #d7c8aa;
+  border-radius: 8px;
+  background: #fffdf7;
+}
+
+.hand-title {
+  min-width: 58px;
+  font-weight: 700;
+  color: #333;
+}
+
+.hand-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hand-piece {
+  min-width: 46px;
+  padding: 5px 7px;
+  border: 1px solid #9d7b4d;
+  border-radius: 6px;
+  background: #fff4d2;
+  font-weight: 700;
+}
+
+.hand-piece:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.hand-piece.selected {
+  outline: 3px solid var(--selected);
+  outline-offset: 1px;
+}
+
+.empty-hand {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+@media (max-width: 560px) {
+  :root {
+    --square-size: 38px;
+  }
+
+  .app {
+    margin-top: 10px;
+  }
+
+  .game-panel {
+    padding: 8px;
+  }
+
+  .piece {
+    min-width: 26px;
+    min-height: 30px;
+    font-size: 16px;
+  }
+
+  .status-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
