@@ -10,7 +10,7 @@
   <main id="app" class="app">
     <header class="app-header">
       <h1>ローカル将棋</h1>
-      <p class="note">ローカル対局・棋譜保存・拡張ルール・軽量通信対戦</p>
+      <p class="note">ローカル対局・棋譜保存・拡張ルール・軽量通信対戦・観戦・持ち時間</p>
     </header>
 
     <section class="toolbar" aria-label="ゲーム設定と保存">
@@ -34,25 +34,51 @@
       </div>
     </section>
 
+    <section class="clock-panel" aria-label="持ち時間設定">
+      <div class="clock-header">
+        <h2>持ち時間</h2>
+        <div id="clock-display" class="clock-display">先手 --:-- / 後手 --:--</div>
+      </div>
+      <div class="clock-controls">
+        <label class="field-label" for="clock-enabled">
+          <input id="clock-enabled" type="checkbox">
+          持ち時間を使う
+        </label>
+        <label class="field-label" for="clock-minutes">
+          初期持ち時間 分
+          <input id="clock-minutes" class="number-input" type="number" min="1" max="180" step="1" value="10">
+        </label>
+        <label class="field-label" for="clock-increment">
+          1手加算 秒
+          <input id="clock-increment" class="number-input" type="number" min="0" max="600" step="1" value="0">
+        </label>
+        <button id="clock-apply-button" class="action-button" type="button">時計設定を反映</button>
+        <button id="clock-pause-button" class="action-button" type="button">時計停止</button>
+      </div>
+    </section>
+
     <section class="online-panel" aria-label="軽量通信対戦">
       <div class="online-header">
-        <h2>軽量通信対戦</h2>
+        <h2>軽量通信対戦 / 観戦 / 再接続</h2>
         <div class="online-badges">
           <span>状態: <strong id="online-status">未接続</strong></span>
           <span>自分: <strong id="online-role">未設定</strong></span>
+          <span>対局ID: <strong id="online-game-id">-</strong></span>
         </div>
       </div>
 
       <ol class="online-steps">
-        <li>ホスト側は「ホスト開始」を押し、出力されたオファーコードを相手へ渡す。</li>
-        <li>ゲスト側はオファーコードを入力欄へ貼り、「ゲスト回答作成」を押して、回答コードをホストへ返す。</li>
-        <li>ホスト側は回答コードを入力欄へ貼り、「ホストで回答読込」を押す。</li>
+        <li>通常対局はホストが「ホスト開始」、ゲストが「ゲスト回答作成」、ホストが「回答読込」で接続する。</li>
+        <li>観戦はホストが観戦用コードを作り、観戦者が「観戦回答作成」で接続する。観戦者は指せない。</li>
+        <li>切断後は「再接続オファー作成」から同じ対局IDで手動再接続する。</li>
       </ol>
 
       <div class="online-controls">
         <button id="host-offer-button" class="action-button" type="button">ホスト開始（先手）</button>
         <button id="guest-answer-button" class="action-button" type="button">ゲスト回答作成（後手）</button>
-        <button id="host-accept-answer-button" class="action-button" type="button">ホストで回答読込</button>
+        <button id="spectator-answer-button" class="action-button" type="button">観戦回答作成</button>
+        <button id="host-accept-answer-button" class="action-button" type="button">回答読込</button>
+        <button id="reconnect-offer-button" class="action-button" type="button">再接続オファー作成</button>
         <button id="copy-signal-button" class="action-button" type="button">出力コードをコピー</button>
         <button id="sync-button" class="action-button" type="button">局面再送</button>
         <button id="disconnect-button" class="action-button" type="button">通信終了</button>

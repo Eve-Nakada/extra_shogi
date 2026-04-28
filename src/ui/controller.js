@@ -1,12 +1,13 @@
 import { applyMove } from "../core/applyMove.js";
+import { createClock, formatClockMs, getDisplayRemainingMs, pauseClock, startClock, switchClockAfterMove, updateClock } from "../core/clock.js";
 import { getSquare } from "../core/coordinates.js";
 import { createStatusText, isCurrentTurnInCheck, resign, updateGameStatus } from "../core/gameStatus.js";
 import { getLegalMoves } from "../core/legalMoveFilter.js";
 import { parseGameRecord, restoreGameRecord, serializeGameRecord } from "../core/record.js";
 import { replayHistory } from "../core/replay.js";
-import { playerName } from "../core/state.js";
+import { opposite, playerName } from "../core/state.js";
 import { undoLastMove } from "../core/undo.js";
-import { applyIncomingMove, applyIncomingResign, createMoveMessage, createResignMessage, createSyncMessage } from "../net/gameSync.js";
+import { applyIncomingClock, applyIncomingMove, applyIncomingResign, createClockMessage, createMoveMessage, createResignMessage, createSyncMessage } from "../net/gameSync.js";
 import { RtcGameSession } from "../net/rtcSession.js";
 import { renderBoard } from "./renderBoard.js";
 import { renderHands } from "./renderHands.js";
@@ -24,14 +25,10 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       setMessage("接続コードを作成しました。相手へコピーして渡してください。");
       renderAll();
     },
-    onStatus: () => {
-      renderAll();
-    },
+    onStatus: renderAll,
     onOpen: snapshot => {
-      if (snapshot.role === "host") {
-        sendSyncMessage();
-      }
-      setMessage("通信接続が開きました。");
+      sendSyncMessage();
+      setMessage(snapshot.spectating ? "観戦接続が開きました。" : "通信接続が開きました。");
       renderAll();
     },
     onClose: () => {
@@ -40,9 +37,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       renderAll();
     },
     onMessage: handleOnlineMessage,
-    onError: error => {
-      setMessage(error.message);
-    }
+    onError: error => setMessage(error.message)
   });
 
   const uiState = {
@@ -53,173 +48,136 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   };
 
   initializeRulesetSelect();
-
-  elements.board.addEventListener("click", event => {
-    const square = event.target.closest(".square");
-    if (!square) return;
-
-    const x = Number(square.dataset.x);
-    const y = Number(square.dataset.y);
-    handleBoardClick(x, y);
-  });
-
-  elements.blackHand.addEventListener("click", handleHandClick);
-  elements.whiteHand.addEventListener("click", handleHandClick);
-
-  elements.historyList.addEventListener("click", event => {
-    if (onlineSession.isOnlineMode()) return;
-
-    const button = event.target.closest(".history-button");
-    if (!button) return;
-    setReplayIndex(Number(button.dataset.index) + 1);
-  });
-
-  elements.rulesetSelect.addEventListener("change", () => {
-    if (onlineSession.isOnlineMode()) {
-      elements.rulesetSelect.value = currentRulesetId;
-      return;
-    }
-
-    currentRulesetId = elements.rulesetSelect.value;
-    state = createState(currentRulesetId);
-    clearSelection();
-    clearReplay();
+  bindEvents();
+  window.setInterval(() => {
+    updateRunningClock();
     renderAll();
-  });
-
-  elements.resignButton.addEventListener("click", () => {
-    if (state.status.type !== "playing" || isReplayMode()) return;
-    if (onlineSession.isOnlineMode() && !onlineSession.isConnected()) return;
-
-    const resigningPlayer = getLocalResigningPlayer();
-    const message = onlineSession.isConnected()
-      ? createResignMessage(state, resigningPlayer)
-      : null;
-
-    resign(state, resigningPlayer);
-
-    if (message) {
-      sendOnlineMessage(message);
-    }
-
-    clearSelection();
-    renderAll();
-  });
-
-  elements.resetButton.addEventListener("click", () => {
-    if (onlineSession.isOnlineMode()) return;
-
-    state = createState(currentRulesetId);
-    clearSelection();
-    clearReplay();
-    renderAll();
-  });
-
-  elements.undoButton.addEventListener("click", () => {
-    if (onlineSession.isOnlineMode()) return;
-    if (state.history.length === 0) return;
-
-    undoLastMove(state);
-    clearSelection();
-    clearReplay();
-    renderAll();
-  });
-
-  elements.replayStartButton.addEventListener("click", () => {
-    if (!onlineSession.isOnlineMode()) setReplayIndex(0);
-  });
-  elements.replayPrevButton.addEventListener("click", () => {
-    if (!onlineSession.isOnlineMode()) setReplayIndex(Math.max(0, getReplayIndex() - 1));
-  });
-  elements.replayNextButton.addEventListener("click", () => {
-    if (!onlineSession.isOnlineMode()) setReplayIndex(Math.min(state.history.length, getReplayIndex() + 1));
-  });
-  elements.replayEndButton.addEventListener("click", () => {
-    if (onlineSession.isOnlineMode()) return;
-
-    clearReplay();
-    clearSelection();
-    renderAll();
-  });
-
-  elements.saveLocalButton.addEventListener("click", () => {
-    window.localStorage.setItem(LOCAL_SAVE_KEY, serializeGameRecord(state));
-    setMessage("ローカル保存しました。ブラウザ内のlocalStorageに保存されています。");
-  });
-
-  elements.loadLocalButton.addEventListener("click", () => {
-    if (onlineSession.isOnlineMode()) return;
-
-    const saved = window.localStorage.getItem(LOCAL_SAVE_KEY);
-    if (!saved) {
-      window.alert("ローカル保存データがありません。");
-      return;
-    }
-
-    loadRecordText(saved);
-  });
-
-  elements.exportButton.addEventListener("click", () => {
-    exportCurrentGame();
-  });
-
-  elements.importButton.addEventListener("click", () => {
-    if (onlineSession.isOnlineMode()) return;
-    elements.importInput.click();
-  });
-
-  elements.importInput.addEventListener("change", async () => {
-    const file = elements.importInput.files?.[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      loadRecordText(text);
-    } finally {
-      elements.importInput.value = "";
-    }
-  });
-
-  elements.hostOfferButton.addEventListener("click", () => {
-    runOnlineAction(async () => {
-      await onlineSession.createHost();
-    });
-  });
-
-  elements.guestAnswerButton.addEventListener("click", () => {
-    runOnlineAction(async () => {
-      await onlineSession.createGuestAnswer(elements.signalInput.value);
-    });
-  });
-
-  elements.hostAcceptAnswerButton.addEventListener("click", () => {
-    runOnlineAction(async () => {
-      await onlineSession.acceptAnswer(elements.signalInput.value);
-    });
-  });
-
-  elements.copySignalButton.addEventListener("click", () => {
-    copySignalOutput();
-  });
-
-  elements.disconnectButton.addEventListener("click", () => {
-    onlineSession.disconnect();
-    clearSelection();
-    clearReplay();
-    setMessage("通信モードを終了しました。");
-    renderAll();
-  });
-
-  elements.syncButton.addEventListener("click", () => {
-    sendSyncMessage();
-  });
-
+  }, 1000);
   renderAll();
 
   return {
     getState: () => state,
     render: renderAll
   };
+
+  function bindEvents() {
+    elements.board.addEventListener("click", event => {
+      const square = event.target.closest(".square");
+      if (!square) return;
+      handleBoardClick(Number(square.dataset.x), Number(square.dataset.y));
+    });
+
+    elements.blackHand.addEventListener("click", handleHandClick);
+    elements.whiteHand.addEventListener("click", handleHandClick);
+
+    elements.historyList.addEventListener("click", event => {
+      if (onlineSession.isOnlineMode()) return;
+      const button = event.target.closest(".history-button");
+      if (button) setReplayIndex(Number(button.dataset.index) + 1);
+    });
+
+    elements.rulesetSelect.addEventListener("change", () => {
+      if (onlineSession.isOnlineMode()) {
+        elements.rulesetSelect.value = currentRulesetId;
+        return;
+      }
+      currentRulesetId = elements.rulesetSelect.value;
+      state = createState(currentRulesetId);
+      clearSelection();
+      clearReplay();
+      renderAll();
+    });
+
+    elements.resignButton.addEventListener("click", () => {
+      if (state.status.type !== "playing" || isReplayMode()) return;
+      if (onlineSession.isOnlineMode() && !onlineSession.isConnected()) return;
+      const resigningPlayer = getLocalResigningPlayer();
+      const message = onlineSession.isConnected() ? createResignMessage(state, resigningPlayer) : null;
+      resign(state, resigningPlayer);
+      if (message) sendOnlineMessage(message);
+      clearSelection();
+      renderAll();
+    });
+
+    elements.resetButton.addEventListener("click", () => {
+      if (onlineSession.isOnlineMode()) return;
+      state = createState(currentRulesetId);
+      clearSelection();
+      clearReplay();
+      renderAll();
+    });
+
+    elements.undoButton.addEventListener("click", () => {
+      if (onlineSession.isOnlineMode() || state.history.length === 0) return;
+      undoLastMove(state);
+      clearSelection();
+      clearReplay();
+      renderAll();
+    });
+
+    elements.replayStartButton.addEventListener("click", () => { if (!onlineSession.isOnlineMode()) setReplayIndex(0); });
+    elements.replayPrevButton.addEventListener("click", () => { if (!onlineSession.isOnlineMode()) setReplayIndex(Math.max(0, getReplayIndex() - 1)); });
+    elements.replayNextButton.addEventListener("click", () => { if (!onlineSession.isOnlineMode()) setReplayIndex(Math.min(state.history.length, getReplayIndex() + 1)); });
+    elements.replayEndButton.addEventListener("click", () => {
+      if (onlineSession.isOnlineMode()) return;
+      clearReplay();
+      clearSelection();
+      renderAll();
+    });
+
+    elements.saveLocalButton.addEventListener("click", () => {
+      window.localStorage.setItem(LOCAL_SAVE_KEY, serializeGameRecord(state));
+      setMessage("ローカル保存しました。ブラウザ内のlocalStorageに保存されています。");
+    });
+
+    elements.loadLocalButton.addEventListener("click", () => {
+      if (onlineSession.isOnlineMode()) return;
+      const saved = window.localStorage.getItem(LOCAL_SAVE_KEY);
+      if (!saved) return window.alert("ローカル保存データがありません。");
+      loadRecordText(saved);
+    });
+
+    elements.exportButton.addEventListener("click", exportCurrentGame);
+    elements.importButton.addEventListener("click", () => { if (!onlineSession.isOnlineMode()) elements.importInput.click(); });
+    elements.importInput.addEventListener("change", async () => {
+      const file = elements.importInput.files?.[0];
+      if (!file) return;
+      try { loadRecordText(await file.text()); } finally { elements.importInput.value = ""; }
+    });
+
+    elements.clockApplyButton.addEventListener("click", () => {
+      if (onlineSession.isOnlineMode()) return;
+      state.clock = createClock(readClockConfig(), state.ruleset.players);
+      if (state.clock.config.enabled && state.status.type === "playing") {
+        startClock(state.clock, state.turn);
+      }
+      clearSelection();
+      renderAll();
+      setMessage("時計設定を反映しました。");
+    });
+
+    elements.clockPauseButton.addEventListener("click", () => {
+      pauseClock(state.clock);
+      if (onlineSession.isConnected()) sendOnlineMessage(createClockMessage(state));
+      renderAll();
+      setMessage("時計を停止しました。");
+    });
+
+    elements.hostOfferButton.addEventListener("click", () => runOnlineAction(() => onlineSession.createHost()));
+    elements.guestAnswerButton.addEventListener("click", () => runOnlineAction(() => onlineSession.createGuestAnswer(elements.signalInput.value)));
+    elements.spectatorAnswerButton.addEventListener("click", () => runOnlineAction(() => onlineSession.createGuestAnswer(elements.signalInput.value, { spectator: true })));
+    elements.hostAcceptAnswerButton.addEventListener("click", () => runOnlineAction(() => onlineSession.acceptAnswer(elements.signalInput.value)));
+    elements.reconnectOfferButton.addEventListener("click", () => runOnlineAction(() => onlineSession.createReconnectOffer()));
+    elements.copySignalButton.addEventListener("click", copySignalOutput);
+    elements.disconnectButton.addEventListener("click", () => {
+      onlineSession.disconnect({ keepIdentity: true });
+      clearSelection();
+      clearReplay();
+      setMessage("通信を切断しました。再接続できます。");
+      renderAll();
+    });
+    elements.syncButton.addEventListener("click", sendSyncMessage);
+  }
 
   function initializeRulesetSelect() {
     elements.rulesetSelect.innerHTML = "";
@@ -234,33 +192,20 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function handleBoardClick(x, y) {
     if (!canActOnCurrentTurn()) return;
-
     const selectedMove = findSelectedMoveTo(x, y);
-    if (selectedMove) {
-      applySelectedMove(x, y);
-      return;
-    }
-
+    if (selectedMove) return applySelectedMove(x, y);
     const piece = getSquare(state, x, y);
-    if (piece?.owner === state.turn) {
-      selectBoardPiece(x, y);
-      return;
-    }
-
+    if (piece?.owner === state.turn) return selectBoardPiece(x, y);
     clearSelection();
     renderAll();
   }
 
   function handleHandClick(event) {
     const button = event.target.closest(".hand-piece");
-    if (!button) return;
-    if (!canActOnCurrentTurn()) return;
-
+    if (!button || !canActOnCurrentTurn()) return;
     const owner = button.dataset.owner;
     const pieceId = button.dataset.pieceId;
-    if (owner !== state.turn) return;
-
-    selectHandPiece(owner, pieceId);
+    if (owner === state.turn) selectHandPiece(owner, pieceId);
   }
 
   function selectBoardPiece(x, y) {
@@ -280,12 +225,12 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     if (!move) return;
 
     try {
+      const mover = state.turn;
       applyMove(state, move);
+      switchClockAfterMove(state.clock, mover, state.ruleset);
       updateGameStatus(state);
-
-      if (onlineSession.isConnected()) {
-        sendOnlineMessage(createMoveMessage(state));
-      }
+      applyFlagFallStatus();
+      if (onlineSession.isConnected()) sendOnlineMessage(createMoveMessage(state));
     } catch (error) {
       window.alert(error instanceof Error ? error.message : String(error));
     }
@@ -299,15 +244,9 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     const candidates = uiState.legalMoves.filter(move => move.to.x === x && move.to.y === y);
     if (candidates.length === 0) return null;
     if (candidates.length === 1) return candidates[0];
-
     const promoted = candidates.find(move => move.promoteTo);
     const normal = candidates.find(move => !move.promoteTo);
-
-    if (promoted && normal) {
-      const answer = window.confirm("成りますか？");
-      return answer ? promoted : normal;
-    }
-
+    if (promoted && normal) return window.confirm("成りますか？") ? promoted : normal;
     return candidates[0];
   }
 
@@ -347,18 +286,15 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function canActOnCurrentTurn() {
     if (state.status.type !== "playing" || isReplayMode()) return false;
-
-    if (!onlineSession.isOnlineMode()) {
-      return true;
-    }
-
+    if (!onlineSession.isOnlineMode()) return true;
     const snapshot = onlineSession.getSnapshot();
+    if (snapshot.spectating) return false;
     return snapshot.connected && snapshot.localPlayer === state.turn;
   }
 
   function getLocalResigningPlayer() {
     const snapshot = onlineSession.getSnapshot();
-    return snapshot.localPlayer ?? state.turn;
+    return snapshot.localPlayer === "spectator" ? state.turn : (snapshot.localPlayer ?? state.turn);
   }
 
   function loadRecordText(text) {
@@ -393,26 +329,14 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function handleOnlineMessage(message) {
     if (!message || typeof message !== "object") return;
-
     if (message.gameId && onlineSession.getSnapshot().gameId && message.gameId !== onlineSession.getSnapshot().gameId) {
       setMessage("別対局の通信メッセージを無視しました。");
       return;
     }
-
-    if (message.type === "sync") {
-      receiveSyncMessage(message);
-      return;
-    }
-
-    if (message.type === "move") {
-      receiveMoveMessage(message);
-      return;
-    }
-
-    if (message.type === "resign") {
-      receiveResignMessage(message);
-      return;
-    }
+    if (message.type === "sync") return receiveSyncMessage(message);
+    if (message.type === "move") return receiveMoveMessage(message);
+    if (message.type === "resign") return receiveResignMessage(message);
+    if (message.type === "clock") return receiveClockMessage(message);
   }
 
   function receiveSyncMessage(message) {
@@ -432,11 +356,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function receiveMoveMessage(message) {
     const result = applyIncomingMove(state, message);
-    if (!result.ok) {
-      setMessage(createIncomingErrorText(result));
-      return;
-    }
-
+    if (!result.ok) return setMessage(createIncomingErrorText(result));
     clearSelection();
     clearReplay();
     renderAll();
@@ -445,15 +365,17 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function receiveResignMessage(message) {
     const result = applyIncomingResign(state, message);
-    if (!result.ok) {
-      setMessage(createIncomingErrorText(result));
-      return;
-    }
-
+    if (!result.ok) return setMessage(createIncomingErrorText(result));
     clearSelection();
     clearReplay();
     renderAll();
     setMessage("相手の投了を反映しました。");
+  }
+
+  function receiveClockMessage(message) {
+    const result = applyIncomingClock(state, message);
+    if (!result.ok) return setMessage(createIncomingErrorText(result));
+    renderAll();
   }
 
   function sendSyncMessage() {
@@ -484,7 +406,6 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   async function copySignalOutput() {
     if (!elements.signalOutput.value) return;
-
     try {
       await navigator.clipboard.writeText(elements.signalOutput.value);
       setMessage("接続コードをクリップボードへコピーしました。");
@@ -494,24 +415,29 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     }
   }
 
-  function createIncomingErrorText(result) {
-    if (result.reason === "sequence") {
-      return `通信同期ずれ：期待手数 ${result.expectedSeq} / 受信手数 ${result.actualSeq}`;
+  function updateRunningClock() {
+    if (state.clock?.config?.enabled && state.status.type === "playing") {
+      updateClock(state.clock);
+      applyFlagFallStatus();
     }
-
-    if (result.reason === "illegal_move") {
-      return "通信で受信した指し手が現在局面の合法手ではありません。局面同期を実行してください。";
-    }
-
-    if (result.reason === "turn") {
-      return `通信手番ずれ：期待 ${playerName(result.expectedPlayer)} / 受信 ${playerName(result.actualPlayer)}`;
-    }
-
-    return `通信メッセージを反映できません: ${result.reason}`;
   }
 
-  function setMessage(message) {
-    elements.message.textContent = message;
+  function applyFlagFallStatus() {
+    if (!state.clock?.flagFallPlayer || state.status.type !== "playing") return;
+    state.status = {
+      type: "ended",
+      winner: opposite(state, state.clock.flagFallPlayer),
+      reason: "time"
+    };
+    if (onlineSession.isConnected()) sendOnlineMessage(createClockMessage(state));
+  }
+
+  function readClockConfig() {
+    return {
+      enabled: elements.clockEnabled.checked,
+      initialMs: Number(elements.clockMinutes.value) * 60 * 1000,
+      incrementMs: Number(elements.clockIncrement.value) * 1000
+    };
   }
 
   function renderAll() {
@@ -526,20 +452,43 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.status.textContent = createDisplayStatusText(displayState);
     elements.status.classList.toggle("check", isCurrentTurnInCheck(displayState));
 
+    renderClockPanel();
     renderActionButtons();
     renderOnlinePanel();
+  }
+
+  function renderClockPanel() {
+    const clock = state.clock;
+    if (clock?.config) {
+      elements.clockEnabled.checked = clock.config.enabled;
+      elements.clockMinutes.value = String(Math.max(1, Math.round(clock.config.initialMs / 60000)));
+      elements.clockIncrement.value = String(Math.round(clock.config.incrementMs / 1000));
+    }
+
+    if (!clock?.config?.enabled) {
+      elements.clockDisplay.textContent = "先手 --:-- / 後手 --:--";
+      return;
+    }
+
+    const black = formatClockMs(getDisplayRemainingMs(clock, "black"));
+    const white = formatClockMs(getDisplayRemainingMs(clock, "white"));
+    const active = clock.running ? ` / 計測中: ${playerName(clock.activePlayer)}` : " / 停止中";
+    elements.clockDisplay.textContent = `先手 ${black} / 後手 ${white}${active}`;
   }
 
   function renderActionButtons() {
     const onlineMode = onlineSession.isOnlineMode();
     const onlineConnected = onlineSession.isConnected();
-    const canResign = state.status.type === "playing" && !isReplayMode() && (!onlineMode || onlineConnected);
+    const snapshot = onlineSession.getSnapshot();
+    const canResign = state.status.type === "playing" && !isReplayMode() && (!onlineMode || (onlineConnected && !snapshot.spectating));
 
     elements.rulesetSelect.disabled = onlineMode;
     elements.resetButton.disabled = onlineMode;
     elements.undoButton.disabled = onlineMode || state.history.length === 0 || isReplayMode();
     elements.loadLocalButton.disabled = onlineMode;
     elements.importButton.disabled = onlineMode;
+    elements.clockApplyButton.disabled = onlineMode || isReplayMode();
+    elements.clockPauseButton.disabled = !state.clock?.config?.enabled;
 
     elements.resignButton.disabled = !canResign;
     elements.resignButton.textContent = `${playerName(getLocalResigningPlayer())} 投了`;
@@ -555,39 +504,36 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   function renderOnlinePanel() {
     const snapshot = onlineSession.getSnapshot();
     const onlineMode = onlineSession.isOnlineMode();
-
     elements.onlineStatus.textContent = createOnlineStatusText(snapshot);
     elements.onlineRole.textContent = createOnlineRoleText(snapshot);
+    elements.onlineGameId.textContent = snapshot.gameId ? snapshot.gameId.slice(0, 8) : "-";
 
     elements.hostOfferButton.disabled = onlineMode || isReplayMode();
     elements.guestAnswerButton.disabled = onlineMode || isReplayMode();
-    elements.hostAcceptAnswerButton.disabled = !(snapshot.role === "host" && (snapshot.status === "waiting-answer" || snapshot.status === "waiting-connect"));
+    elements.spectatorAnswerButton.disabled = onlineMode || isReplayMode();
+    elements.hostAcceptAnswerButton.disabled = !(snapshot.role && (snapshot.status === "waiting-answer" || snapshot.status === "waiting-connect"));
+    elements.reconnectOfferButton.disabled = !(snapshot.gameId && (snapshot.status === "disconnected" || snapshot.status === "failed"));
     elements.copySignalButton.disabled = !elements.signalOutput.value;
     elements.disconnectButton.disabled = !onlineMode;
     elements.syncButton.disabled = !snapshot.connected;
   }
 
   function createDisplayStatusText(displayState) {
-    const base = isReplayMode()
-      ? `${createStatusText(displayState)} / 再生 ${uiState.replayIndex}/${state.history.length}`
-      : createStatusText(displayState);
-
-    if (!onlineSession.isOnlineMode()) {
-      return base;
+    let base;
+    if (displayState.status.type === "ended" && displayState.status.reason === "time") {
+      base = `時間切れ：${playerName(displayState.status.winner)}の勝ち`;
+    } else {
+      base = isReplayMode()
+        ? `${createStatusText(displayState)} / 再生 ${uiState.replayIndex}/${state.history.length}`
+        : createStatusText(displayState);
     }
 
+    if (!onlineSession.isOnlineMode()) return base;
     const snapshot = onlineSession.getSnapshot();
-    if (!snapshot.connected) {
-      return `${base} / 通信準備中`;
-    }
-
-    if (state.status.type !== "playing") {
-      return `${base} / 通信対局`;
-    }
-
-    return snapshot.localPlayer === state.turn
-      ? `${base} / あなたの手番`
-      : `${base} / 相手の手番`;
+    if (snapshot.spectating) return `${base} / 観戦中`;
+    if (!snapshot.connected) return `${base} / 通信準備中`;
+    if (state.status.type !== "playing") return `${base} / 通信対局`;
+    return snapshot.localPlayer === state.turn ? `${base} / あなたの手番` : `${base} / 相手の手番`;
   }
 
   function createOnlineStatusText(snapshot) {
@@ -601,13 +547,24 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       disconnected: "切断",
       failed: "接続失敗"
     };
-
     return labels[snapshot.status] ?? snapshot.status;
   }
 
   function createOnlineRoleText(snapshot) {
     if (!snapshot.localPlayer) return "未設定";
-    const role = snapshot.role === "host" ? "ホスト" : "ゲスト";
+    if (snapshot.spectating) return "観戦者 / 読み取り専用";
+    const role = snapshot.role === "host" || snapshot.role === "spectator-host" ? "ホスト" : "ゲスト";
     return `${role} / ${playerName(snapshot.localPlayer)}`;
+  }
+
+  function createIncomingErrorText(result) {
+    if (result.reason === "sequence") return `通信同期ずれ：期待手数 ${result.expectedSeq} / 受信手数 ${result.actualSeq}`;
+    if (result.reason === "illegal_move") return "通信で受信した指し手が現在局面の合法手ではありません。局面同期を実行してください。";
+    if (result.reason === "turn") return `通信手番ずれ：期待 ${playerName(result.expectedPlayer)} / 受信 ${playerName(result.actualPlayer)}`;
+    return `通信メッセージを反映できません: ${result.reason}`;
+  }
+
+  function setMessage(message) {
+    elements.message.textContent = message;
   }
 }

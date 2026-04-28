@@ -11,6 +11,7 @@ export class RtcGameSession {
     this.localPlayer = null;
     this.gameId = null;
     this.status = "idle";
+    this.reconnectToken = null;
   }
 
   getSnapshot() {
@@ -19,7 +20,9 @@ export class RtcGameSession {
       role: this.role,
       localPlayer: this.localPlayer,
       gameId: this.gameId,
-      connected: this.isConnected()
+      reconnectToken: this.reconnectToken,
+      connected: this.isConnected(),
+      spectating: this.localPlayer === "spectator"
     };
   }
 
@@ -31,15 +34,16 @@ export class RtcGameSession {
     return this.status !== "idle";
   }
 
-  async createHost() {
-    this.disconnect({ silent: true });
-    this.role = "host";
-    this.localPlayer = "black";
-    this.gameId = createId();
+  async createHost(options = {}) {
+    this.disconnect({ silent: true, keepIdentity: false });
+    this.role = options.spectatorHost ? "spectator-host" : "host";
+    this.localPlayer = options.spectatorHost ? "black" : "black";
+    this.gameId = options.gameId ?? createId();
+    this.reconnectToken = options.reconnectToken ?? createId();
     this.setStatus("creating-offer");
 
     this.peerConnection = this.createPeerConnection();
-    this.channel = this.peerConnection.createDataChannel("shogi-html-v05", {
+    this.channel = this.peerConnection.createDataChannel("shogi-html-v06", {
       ordered: true
     });
     this.setupDataChannel(this.channel);
@@ -49,20 +53,43 @@ export class RtcGameSession {
     await waitForIceGatheringComplete(this.peerConnection);
 
     this.emitSignal(createSignalEnvelope({
-      type: "offer",
+      type: options.reconnect ? "reconnect-offer" : "offer",
       gameId: this.gameId,
+      reconnectToken: this.reconnectToken,
+      roleHint: this.role,
       description: this.peerConnection.localDescription
     }));
     this.setStatus("waiting-answer");
   }
 
-  async createGuestAnswer(signalText) {
-    const offer = parseSignal(signalText, "offer");
+  async createReconnectOffer() {
+    if (!this.gameId || !this.localPlayer) {
+      throw new Error("再接続する対局情報がありません。先に通常接続を開始してください。");
+    }
 
-    this.disconnect({ silent: true });
-    this.role = "guest";
-    this.localPlayer = "white";
+    const gameId = this.gameId;
+    const reconnectToken = this.reconnectToken ?? createId();
+    const localPlayer = this.localPlayer;
+    const role = this.role ?? "host";
+    this.disconnect({ silent: true, keepIdentity: true });
+    this.role = role;
+    this.localPlayer = localPlayer;
+    this.gameId = gameId;
+    this.reconnectToken = reconnectToken;
+    await this.createOfferWithIdentity("reconnect-offer");
+  }
+
+  async createGuestAnswer(signalText, options = {}) {
+    const offer = parseSignal(signalText, null);
+    if (offer.type !== "offer" && offer.type !== "reconnect-offer") {
+      throw new Error("オファーコードまたは再接続オファーコードが必要です。");
+    }
+
+    this.disconnect({ silent: true, keepIdentity: false });
+    this.role = options.spectator ? "spectator" : "guest";
+    this.localPlayer = options.spectator ? "spectator" : "white";
     this.gameId = offer.gameId;
+    this.reconnectToken = offer.reconnectToken ?? createId();
     this.setStatus("creating-answer");
 
     this.peerConnection = this.createPeerConnection();
@@ -77,19 +104,24 @@ export class RtcGameSession {
     await waitForIceGatheringComplete(this.peerConnection);
 
     this.emitSignal(createSignalEnvelope({
-      type: "answer",
+      type: offer.type === "reconnect-offer" ? "reconnect-answer" : "answer",
       gameId: this.gameId,
+      reconnectToken: this.reconnectToken,
+      roleHint: this.role,
       description: this.peerConnection.localDescription
     }));
     this.setStatus("waiting-connect");
   }
 
   async acceptAnswer(signalText) {
-    if (!this.peerConnection || this.role !== "host") {
+    if (!this.peerConnection || !this.role) {
       throw new Error("ホスト開始後に回答コードを読み込んでください。");
     }
 
-    const answer = parseSignal(signalText, "answer");
+    const answer = parseSignal(signalText, null);
+    if (answer.type !== "answer" && answer.type !== "reconnect-answer") {
+      throw new Error("回答コードまたは再接続回答コードが必要です。");
+    }
     if (answer.gameId !== this.gameId) {
       throw new Error("対局IDが一致しません。別の回答コードの可能性があります。");
     }
@@ -111,14 +143,23 @@ export class RtcGameSession {
   }
 
   disconnect(options = {}) {
+    const keepIdentity = Boolean(options.keepIdentity);
+    const identity = keepIdentity ? {
+      role: this.role,
+      localPlayer: this.localPlayer,
+      gameId: this.gameId,
+      reconnectToken: this.reconnectToken
+    } : null;
+
     this.channel?.close();
     this.peerConnection?.close();
     this.channel = null;
     this.peerConnection = null;
-    this.role = null;
-    this.localPlayer = null;
-    this.gameId = null;
-    this.status = "idle";
+    this.role = identity?.role ?? null;
+    this.localPlayer = identity?.localPlayer ?? null;
+    this.gameId = identity?.gameId ?? null;
+    this.reconnectToken = identity?.reconnectToken ?? null;
+    this.status = keepIdentity ? "disconnected" : "idle";
 
     if (!options.silent) {
       this.callbacks.onStatus?.(this.getSnapshot());
@@ -143,7 +184,7 @@ export class RtcGameSession {
       } else if (state === "disconnected") {
         this.setStatus("disconnected");
       } else if (state === "closed") {
-        this.setStatus("idle");
+        this.setStatus(this.gameId ? "disconnected" : "idle");
       }
     };
 
@@ -189,6 +230,24 @@ export class RtcGameSession {
     this.status = status;
     this.callbacks.onStatus?.(this.getSnapshot());
   }
+
+  async createOfferWithIdentity(type) {
+    this.setStatus("creating-offer");
+    this.peerConnection = this.createPeerConnection();
+    this.channel = this.peerConnection.createDataChannel("shogi-html-v06", { ordered: true });
+    this.setupDataChannel(this.channel);
+    const offer = await this.peerConnection.createOffer();
+    await this.peerConnection.setLocalDescription(offer);
+    await waitForIceGatheringComplete(this.peerConnection);
+    this.emitSignal(createSignalEnvelope({
+      type,
+      gameId: this.gameId,
+      reconnectToken: this.reconnectToken,
+      roleHint: this.role,
+      description: this.peerConnection.localDescription
+    }));
+    this.setStatus("waiting-answer");
+  }
 }
 
 export function parseSignal(text, expectedType = null) {
@@ -207,6 +266,11 @@ export function parseSignal(text, expectedType = null) {
     throw new Error(`${expectedType}コードが必要ですが、${signal.type ?? "不明"}コードが入力されています。`);
   }
 
+  const allowedTypes = ["offer", "answer", "reconnect-offer", "reconnect-answer"];
+  if (!allowedTypes.includes(signal.type)) {
+    throw new Error("接続コードの種別が不正です。");
+  }
+
   if (!signal.gameId || !signal.description?.type || !signal.description?.sdp) {
     throw new Error("接続コードの形式が不正です。コピー内容を確認してください。");
   }
@@ -214,13 +278,15 @@ export function parseSignal(text, expectedType = null) {
   return signal;
 }
 
-function createSignalEnvelope({ type, gameId, description }) {
+function createSignalEnvelope({ type, gameId, reconnectToken, roleHint, description }) {
   return {
     app: "shogi-html",
     kind: "webrtc-signal",
-    version: 1,
+    version: 2,
     type,
     gameId,
+    reconnectToken,
+    roleHint,
     description: {
       type: description.type,
       sdp: description.sdp

@@ -2,9 +2,10 @@ import { applyMove } from "../core/applyMove.js";
 import { updateGameStatus, resign } from "../core/gameStatus.js";
 import { getLegalMoves } from "../core/legalMoveFilter.js";
 import { createGameRecord } from "../core/record.js";
+import { cloneClock } from "../core/clock.js";
 import { cloneHistoryEntry, cloneMove } from "../core/state.js";
 
-export const WIRE_PROTOCOL_VERSION = 1;
+export const WIRE_PROTOCOL_VERSION = 2;
 
 export function createSyncMessage(state) {
   return {
@@ -26,7 +27,8 @@ export function createMoveMessage(state) {
     seq: state.history.length,
     player: entry.turn,
     move: cloneMove(entry.move),
-    entry: cloneHistoryEntry(entry)
+    entry: cloneHistoryEntry(entry),
+    clock: cloneClock(state.clock)
   };
 }
 
@@ -35,7 +37,17 @@ export function createResignMessage(state, player) {
     type: "resign",
     protocolVersion: WIRE_PROTOCOL_VERSION,
     seq: state.history.length,
-    player
+    player,
+    clock: cloneClock(state.clock)
+  };
+}
+
+export function createClockMessage(state) {
+  return {
+    type: "clock",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    seq: state.history.length,
+    clock: cloneClock(state.clock)
   };
 }
 
@@ -44,7 +56,7 @@ export function applyIncomingMove(state, message) {
     return { ok: false, reason: "message_type" };
   }
 
-  if (message.protocolVersion !== WIRE_PROTOCOL_VERSION) {
+  if (!isCompatibleProtocol(message.protocolVersion)) {
     return { ok: false, reason: "protocol_version" };
   }
 
@@ -64,6 +76,7 @@ export function applyIncomingMove(state, message) {
 
   applyMove(state, move);
   updateGameStatus(state);
+  if (message.clock) state.clock = cloneClock(message.clock);
   return { ok: true };
 }
 
@@ -72,7 +85,7 @@ export function applyIncomingResign(state, message) {
     return { ok: false, reason: "message_type" };
   }
 
-  if (message.protocolVersion !== WIRE_PROTOCOL_VERSION) {
+  if (!isCompatibleProtocol(message.protocolVersion)) {
     return { ok: false, reason: "protocol_version" };
   }
 
@@ -80,7 +93,25 @@ export function applyIncomingResign(state, message) {
     return { ok: false, reason: "player" };
   }
 
+  if (message.clock) state.clock = cloneClock(message.clock);
   resign(state, message.player);
+  return { ok: true };
+}
+
+export function applyIncomingClock(state, message) {
+  if (!message || message.type !== "clock") {
+    return { ok: false, reason: "message_type" };
+  }
+
+  if (!isCompatibleProtocol(message.protocolVersion)) {
+    return { ok: false, reason: "protocol_version" };
+  }
+
+  if (message.seq !== state.history.length) {
+    return { ok: false, reason: "sequence", expectedSeq: state.history.length, actualSeq: message.seq };
+  }
+
+  state.clock = cloneClock(message.clock);
   return { ok: true };
 }
 
@@ -135,4 +166,9 @@ export function sameMove(a, b) {
   }
 
   return false;
+}
+
+function isCompatibleProtocol(version) {
+  // v0.6 accepts v0.5 messages without clock fields.
+  return version === 1 || version === WIRE_PROTOCOL_VERSION;
 }
