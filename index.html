@@ -10,7 +10,7 @@
   <main id="app" class="app">
     <header class="app-header">
       <h1>ローカル将棋</h1>
-      <p class="note">通信なし・ブラウザ内完結のローカル対局版</p>
+      <p class="note">ローカル対局・棋譜保存・拡張ルール・軽量通信対戦</p>
     </header>
 
     <section class="toolbar" aria-label="ゲーム設定と保存">
@@ -31,6 +31,43 @@
         <button id="export-button" class="action-button" type="button">JSON書出</button>
         <button id="import-button" class="action-button" type="button">JSON読込</button>
         <input id="import-input" class="hidden-file" type="file" accept="application/json,.json">
+      </div>
+    </section>
+
+    <section class="online-panel" aria-label="軽量通信対戦">
+      <div class="online-header">
+        <h2>軽量通信対戦</h2>
+        <div class="online-badges">
+          <span>状態: <strong id="online-status">未接続</strong></span>
+          <span>自分: <strong id="online-role">未設定</strong></span>
+        </div>
+      </div>
+
+      <ol class="online-steps">
+        <li>ホスト側は「ホスト開始」を押し、出力されたオファーコードを相手へ渡す。</li>
+        <li>ゲスト側はオファーコードを入力欄へ貼り、「ゲスト回答作成」を押して、回答コードをホストへ返す。</li>
+        <li>ホスト側は回答コードを入力欄へ貼り、「ホストで回答読込」を押す。</li>
+      </ol>
+
+      <div class="online-controls">
+        <button id="host-offer-button" class="action-button" type="button">ホスト開始（先手）</button>
+        <button id="guest-answer-button" class="action-button" type="button">ゲスト回答作成（後手）</button>
+        <button id="host-accept-answer-button" class="action-button" type="button">ホストで回答読込</button>
+        <button id="copy-signal-button" class="action-button" type="button">出力コードをコピー</button>
+        <button id="sync-button" class="action-button" type="button">局面再送</button>
+        <button id="disconnect-button" class="action-button" type="button">通信終了</button>
+      </div>
+
+      <div class="signal-grid">
+        <label class="signal-label" for="signal-input">
+          入力コード
+          <textarea id="signal-input" class="signal-textarea" spellcheck="false" placeholder="相手から受け取ったオファー/回答コードを貼り付け"></textarea>
+        </label>
+
+        <label class="signal-label" for="signal-output">
+          出力コード
+          <textarea id="signal-output" class="signal-textarea" spellcheck="false" readonly placeholder="ここに作成された接続コードが表示されます"></textarea>
+        </label>
       </div>
     </section>
 

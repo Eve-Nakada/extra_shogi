@@ -21,7 +21,17 @@ const elements = {
   exportButton: document.getElementById("export-button"),
   importButton: document.getElementById("import-button"),
   importInput: document.getElementById("import-input"),
-  historyList: document.getElementById("history-list")
+  historyList: document.getElementById("history-list"),
+  onlineStatus: document.getElementById("online-status"),
+  onlineRole: document.getElementById("online-role"),
+  signalInput: document.getElementById("signal-input"),
+  signalOutput: document.getElementById("signal-output"),
+  hostOfferButton: document.getElementById("host-offer-button"),
+  guestAnswerButton: document.getElementById("guest-answer-button"),
+  hostAcceptAnswerButton: document.getElementById("host-accept-answer-button"),
+  copySignalButton: document.getElementById("copy-signal-button"),
+  disconnectButton: document.getElementById("disconnect-button"),
+  syncButton: document.getElementById("sync-button")
 };
 
 for (const [name, element] of Object.entries(elements)) {
