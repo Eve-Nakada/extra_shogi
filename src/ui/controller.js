@@ -7,37 +7,54 @@ import { parseGameRecord, restoreGameRecord, serializeGameRecord } from "../core
 import { replayHistory } from "../core/replay.js";
 import { opposite, playerName } from "../core/state.js";
 import { undoLastMove } from "../core/undo.js";
-import { applyIncomingClock, applyIncomingMove, applyIncomingResign, createClockMessage, createMoveMessage, createResignMessage, createSyncMessage } from "../net/gameSync.js";
+import { applyIncomingClock, applyIncomingMove, applyIncomingResign, createClockMessage, createMoveMessage, createPingMessage, createPongMessage, createResignMessage, createSyncMessage, createSyncRequestMessage } from "../net/gameSync.js";
+import { createConnectionLog, addConnectionLog, clearConnectionLog, createSnapshotText, summarizeMessage } from "../net/connectionLog.js";
 import { RtcGameSession } from "../net/rtcSession.js";
 import { renderBoard } from "./renderBoard.js";
 import { renderHands } from "./renderHands.js";
 import { renderHistory } from "./renderHistory.js";
+import { renderConnectionLog } from "./renderConnectionLog.js";
 
 const LOCAL_SAVE_KEY = "shogi-html:last-game";
 
 export function initController({ createState, elements, rulesets, rulesetsById, defaultRulesetId }) {
   let currentRulesetId = defaultRulesetId ?? rulesets[0].id;
   let state = createState(currentRulesetId);
+  const connectionLog = createConnectionLog({ maxEntries: 120 });
+  let lastOnlineSnapshotText = "";
 
   const onlineSession = new RtcGameSession({
     onSignal: text => {
       elements.signalOutput.value = text;
+      addLog("local", "signal", "接続コードを作成しました。");
       setMessage("接続コードを作成しました。相手へコピーして渡してください。");
       renderAll();
     },
-    onStatus: renderAll,
+    onStatus: snapshot => {
+      const nextText = createSnapshotText(snapshot);
+      if (nextText !== lastOnlineSnapshotText) {
+        lastOnlineSnapshotText = nextText;
+        addLog("local", "status", nextText);
+      }
+      renderAll();
+    },
     onOpen: snapshot => {
+      addLog("local", "open", snapshot.spectating ? "観戦接続が開きました。" : "通信接続が開きました。");
       sendSyncMessage();
       setMessage(snapshot.spectating ? "観戦接続が開きました。" : "通信接続が開きました。");
       renderAll();
     },
-    onClose: () => {
+    onClose: snapshot => {
+      addLog("local", "close", createSnapshotText(snapshot));
       setMessage("通信接続が閉じました。必要なら再接続してください。");
       clearSelection();
       renderAll();
     },
     onMessage: handleOnlineMessage,
-    onError: error => setMessage(error.message)
+    onError: error => {
+      addLog("error", "error", error.message);
+      setMessage(error.message);
+    }
   });
 
   const uiState = {
@@ -177,6 +194,20 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       renderAll();
     });
     elements.syncButton.addEventListener("click", sendSyncMessage);
+    elements.syncRequestButton.addEventListener("click", () => {
+      if (!onlineSession.isConnected()) return;
+      sendOnlineMessage(createSyncRequestMessage(state, "manual"));
+      setMessage("相手へ局面同期要求を送信しました。");
+    });
+    elements.pingButton.addEventListener("click", () => {
+      if (!onlineSession.isConnected()) return;
+      sendOnlineMessage(createPingMessage(state));
+      setMessage("疎通確認を送信しました。");
+    });
+    elements.clearConnectionLogButton.addEventListener("click", () => {
+      clearConnectionLog(connectionLog);
+      renderAll();
+    });
   }
 
   function initializeRulesetSelect() {
@@ -329,6 +360,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function handleOnlineMessage(message) {
     if (!message || typeof message !== "object") return;
+    addLog("in", message.type ?? "message", summarizeMessage(message), message);
     if (message.gameId && onlineSession.getSnapshot().gameId && message.gameId !== onlineSession.getSnapshot().gameId) {
       setMessage("別対局の通信メッセージを無視しました。");
       return;
@@ -337,6 +369,9 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     if (message.type === "move") return receiveMoveMessage(message);
     if (message.type === "resign") return receiveResignMessage(message);
     if (message.type === "clock") return receiveClockMessage(message);
+    if (message.type === "sync-request") return receiveSyncRequestMessage(message);
+    if (message.type === "ping") return receivePingMessage(message);
+    if (message.type === "pong") return receivePongMessage(message);
   }
 
   function receiveSyncMessage(message) {
@@ -356,7 +391,12 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function receiveMoveMessage(message) {
     const result = applyIncomingMove(state, message);
-    if (!result.ok) return setMessage(createIncomingErrorText(result));
+    if (!result.ok) {
+      const text = createIncomingErrorText(result);
+      if (onlineSession.isConnected()) sendOnlineMessage(createSyncRequestMessage(state, result.reason));
+      setMessage(`${text} 同期要求を送信しました。`);
+      return;
+    }
     clearSelection();
     clearReplay();
     renderAll();
@@ -378,6 +418,22 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     renderAll();
   }
 
+  function receiveSyncRequestMessage(message) {
+    if (!onlineSession.isConnected()) return;
+    sendSyncMessage();
+    setMessage(`相手から局面同期要求を受け取りました: ${message.reason ?? "manual"}`);
+  }
+
+  function receivePingMessage(message) {
+    if (!onlineSession.isConnected()) return;
+    sendOnlineMessage(createPongMessage(state, message));
+    setMessage("疎通確認へ応答しました。");
+  }
+
+  function receivePongMessage(message) {
+    setMessage(message.pingSentAt ? `疎通応答を受信しました。ping送信時刻: ${message.pingSentAt}` : "疎通応答を受信しました。");
+  }
+
   function sendSyncMessage() {
     if (!onlineSession.isConnected()) return;
     sendOnlineMessage(createSyncMessage(state));
@@ -387,8 +443,11 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   function sendOnlineMessage(message) {
     try {
       onlineSession.send(message);
+      addLog("out", message.type ?? "message", summarizeMessage(message), message);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
+      const text = error instanceof Error ? error.message : String(error);
+      addLog("error", "send", text, message);
+      setMessage(text);
     }
   }
 
@@ -455,6 +514,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     renderClockPanel();
     renderActionButtons();
     renderOnlinePanel();
+    renderConnectionLog(elements.connectionLog, connectionLog);
   }
 
   function renderClockPanel() {
@@ -507,6 +567,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.onlineStatus.textContent = createOnlineStatusText(snapshot);
     elements.onlineRole.textContent = createOnlineRoleText(snapshot);
     elements.onlineGameId.textContent = snapshot.gameId ? snapshot.gameId.slice(0, 8) : "-";
+    elements.connectionDetail.textContent = createSnapshotText(snapshot);
 
     elements.hostOfferButton.disabled = onlineMode || isReplayMode();
     elements.guestAnswerButton.disabled = onlineMode || isReplayMode();
@@ -516,6 +577,8 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.copySignalButton.disabled = !elements.signalOutput.value;
     elements.disconnectButton.disabled = !onlineMode;
     elements.syncButton.disabled = !snapshot.connected;
+    elements.syncRequestButton.disabled = !snapshot.connected;
+    elements.pingButton.disabled = !snapshot.connected;
   }
 
   function createDisplayStatusText(displayState) {
@@ -562,6 +625,10 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     if (result.reason === "illegal_move") return "通信で受信した指し手が現在局面の合法手ではありません。局面同期を実行してください。";
     if (result.reason === "turn") return `通信手番ずれ：期待 ${playerName(result.expectedPlayer)} / 受信 ${playerName(result.actualPlayer)}`;
     return `通信メッセージを反映できません: ${result.reason}`;
+  }
+
+  function addLog(direction, type, text, detail = null) {
+    addConnectionLog(connectionLog, { direction, type, text, detail });
   }
 
   function setMessage(message) {

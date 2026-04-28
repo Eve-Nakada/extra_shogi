@@ -40,7 +40,12 @@ const elements = {
   reconnectOfferButton: document.getElementById("reconnect-offer-button"),
   copySignalButton: document.getElementById("copy-signal-button"),
   disconnectButton: document.getElementById("disconnect-button"),
-  syncButton: document.getElementById("sync-button")
+  syncButton: document.getElementById("sync-button"),
+  syncRequestButton: document.getElementById("sync-request-button"),
+  pingButton: document.getElementById("ping-button"),
+  clearConnectionLogButton: document.getElementById("clear-connection-log-button"),
+  connectionDetail: document.getElementById("connection-detail"),
+  connectionLog: document.getElementById("connection-log")
 };
 
 for (const [name, element] of Object.entries(elements)) {

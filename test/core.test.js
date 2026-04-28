@@ -9,11 +9,12 @@ import { serializeGameRecord, parseGameRecord, restoreGameRecord } from "../src/
 import { replayHistory } from "../src/core/replay.js";
 import { createInitialState } from "../src/core/state.js";
 import { undoLastMove } from "../src/core/undo.js";
-import { applyIncomingMove, createMoveMessage, sameMove } from "../src/net/gameSync.js";
-import { parseSignal } from "../src/net/rtcSession.js";
+import { applyIncomingMove, createMoveMessage, sameMove, createSyncRequestMessage, createPingMessage, createPongMessage, isCompatibleProtocol } from "../src/net/gameSync.js";
+import { parseSignal, summarizeSignal, canAcceptSignalForCurrentSession } from "../src/net/rtcSession.js";
 import { EXPANDED_SHOGI } from "../src/rulesets/expandedShogi.js";
 import { RULESET_BY_ID } from "../src/rulesets/index.js";
 import { STANDARD_SHOGI } from "../src/rulesets/standardShogi.js";
+import { createConnectionLog, addConnectionLog, summarizeMessage, createSnapshotText } from "../src/net/connectionLog.js";
 
 function createEmptyState(ruleset = STANDARD_SHOGI) {
   const state = createInitialState(ruleset);
@@ -303,4 +304,51 @@ test("観戦用接続コードはroleHintを含む形式として検証できる
   assert.equal(parsed.gameId, "game-v06");
   assert.equal(parsed.reconnectToken, "token-v06");
   assert.equal(parsed.roleHint, "host");
+});
+
+
+test("v0.7 通信ログは件数上限を守り、メッセージを要約できる", () => {
+  const log = createConnectionLog({ maxEntries: 2 });
+  addConnectionLog(log, { direction: "out", type: "sync", text: "first" }, new Date("2026-04-28T00:00:00.000Z"));
+  addConnectionLog(log, { direction: "in", type: "move", text: "second" }, new Date("2026-04-28T00:00:01.000Z"));
+  addConnectionLog(log, { direction: "local", type: "status", text: "third" }, new Date("2026-04-28T00:00:02.000Z"));
+
+  assert.equal(log.entries.length, 2);
+  assert.equal(log.entries[0].text, "second");
+  assert.equal(summarizeMessage({ type: "sync-request", seq: 12, reason: "sequence" }), "局面同期要求 #12 (sequence)");
+});
+
+test("v0.7 同期要求・ping・pongメッセージを作成できる", () => {
+  const state = createInitialState(STANDARD_SHOGI);
+  const syncRequest = createSyncRequestMessage(state, "manual");
+  const ping = createPingMessage(state);
+  const pong = createPongMessage(state, { sentAt: "2026-04-28T00:00:00.000Z" });
+
+  assert.equal(syncRequest.type, "sync-request");
+  assert.equal(syncRequest.reason, "manual");
+  assert.equal(ping.type, "ping");
+  assert.equal(pong.type, "pong");
+  assert.equal(pong.pingSentAt, "2026-04-28T00:00:00.000Z");
+  assert.equal(isCompatibleProtocol(1), true);
+  assert.equal(isCompatibleProtocol(2), true);
+  assert.equal(isCompatibleProtocol(3), true);
+});
+
+test("v0.7 接続診断テキストと接続コード要約を作れる", () => {
+  const signal = JSON.stringify({
+    app: "shogi-html",
+    kind: "webrtc-signal",
+    version: 3,
+    type: "reconnect-offer",
+    gameId: "game-v07-example",
+    reconnectToken: "token-v07",
+    roleHint: "host",
+    description: { type: "offer", sdp: "v=0\r\n" },
+    createdAt: "2026-04-28T00:00:00.000Z"
+  });
+
+  assert.equal(summarizeSignal(signal), "reconnect-offer / host / game-v07");
+  assert.equal(canAcceptSignalForCurrentSession(signal, { gameId: "game-v07-example" }), true);
+  assert.equal(canAcceptSignalForCurrentSession(signal, { gameId: "other-game" }), false);
+  assert.equal(createSnapshotText({ status: "connected", connected: true, role: "host", localPlayer: "black", channelState: "open", peerCount: 1 }).includes("dc=open"), true);
 });
