@@ -9,7 +9,7 @@ import { createKifLikeGameRecord } from "../core/notation.js";
 import { completeGameMeta, normalizeGameMeta } from "../core/meta.js";
 import { replayHistory } from "../core/replay.js";
 import { isExtraActionTurnState, opposite, playerName } from "../core/state.js";
-import { addSetupPiece, applyPlacement, finalizeSetupPlayer, generateRandomPacks, getLegalPlacements, getSetupPlayer, isSetupActive, removeSetupPiece, removeSetupPlacementAt, selectFixedPack, selectGeneratedPack } from "../core/setup.js";
+import { addSetupPiece, applyPlacement, autoPlaceSetupPieces, finalizeSetupPlayer, generateRandomPacks, getLegalPlacements, getSetupPlayer, isSetupActive, removeSetupPiece, removeSetupPlacementAt, selectFixedPack, selectGeneratedPack } from "../core/setup.js";
 import { undoLastMove } from "../core/undo.js";
 import { applyIncomingClock, applyIncomingMove, applyIncomingResign, applyIncomingSetup, createClockMessage, createMoveMessage, createPingMessage, createPongMessage, createResignMessage, createSetupMessage, createSyncMessage, createSyncRequestMessage } from "../net/gameSync.js";
 import { createConnectionLog, addConnectionLog, clearConnectionLog, createSnapshotText, summarizeMessage } from "../net/connectionLog.js";
@@ -1179,6 +1179,11 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       else if (action === "select-fixed-pack") selectFixedPack(state, button.dataset.packId, player);
       else if (action === "generate-random-packs") generateRandomPacks(state);
       else if (action === "select-random-pack") selectGeneratedPack(state, button.dataset.packId, player);
+      else if (action === "random-placement") {
+        autoPlaceSetupPieces(state, player);
+        uiState.setupSelectedPieceId = null;
+        uiState.setupPlacements = [];
+      }
       else if (action === "select-placement-piece") {
         changed = false;
         uiState.setupSelectedPieceId = pieceId;

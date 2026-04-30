@@ -2,9 +2,11 @@
 import { STANDARD_SHOGI } from "./standardShogi.js";
 import { EXPANDED_SHOGI } from "./expandedShogi.js";
 import { SETUP_SHOGI } from "./setupShogi.js";
+import { SMALL_SHOGI } from "./smallShogi.js";
 
 export const RULESETS = [
   STANDARD_SHOGI,
+  SMALL_SHOGI,
   EXPANDED_SHOGI,
   SETUP_SHOGI
 ];

@@ -104,6 +104,8 @@ export function chebyshevDistance(a, b) {
 }
 
 export function isInOwnDropZone(state, player, square, options = {}) {
+  if (options.allowOwnCampAlways && isOwnCamp(state, player, square)) return true;
+
   const baseKinds = options.baseKinds ?? null;
   const ownBases = (state.bases ?? []).filter(base => {
     if (base.owner !== player) return false;
@@ -131,7 +133,8 @@ export function isDropAllowedByPolicy(state, player, square) {
     return isInOwnDropZone(state, player, square, {
       baseKinds: drops.baseKinds ?? null,
       radius: drops.radius,
-      allowInitialCampIfNoBase: drops.allowInitialCampIfNoBase !== false
+      allowInitialCampIfNoBase: drops.allowInitialCampIfNoBase !== false,
+      allowOwnCampAlways: drops.allowOwnCampAlways === true
     });
   }
   return true;

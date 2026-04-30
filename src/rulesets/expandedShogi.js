@@ -207,6 +207,7 @@ export const EXPANDED_SHOGI = {
     baseKinds: ["castle", "carrier"],
     radius: 1,
     allowInitialCampIfNoBase: true,
+    allowOwnCampAlways: true,
     allowDropInPromotionZone: true
   },
 

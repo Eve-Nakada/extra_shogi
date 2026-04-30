@@ -2209,3 +2209,22 @@ textarea {
   font-weight: 800;
   line-height: 1;
 }
+
+
+/* v2.5 adjustment: make the game record independently scrollable. */
+.history-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc((var(--board-height, 9) * var(--square-size)) + 96px);
+}
+
+.history-list {
+  max-height: calc((var(--board-height, 9) * var(--square-size)) + 24px);
+  overflow-y: auto;
+  padding-right: 4px;
+  overscroll-behavior: contain;
+}
+
+.setup-actions .action-button[data-setup-action="random-placement"] {
+  font-weight: 800;
+}
