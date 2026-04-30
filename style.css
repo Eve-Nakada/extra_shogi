@@ -652,3 +652,280 @@ textarea {
     grid-column: span 1;
   }
 }
+
+/* v0.9.1 Responsive polish: keep the rules/data model untouched and make dense UI usable on narrow screens. */
+:root {
+  --page-max-width: 1180px;
+  --page-padding: 12px;
+  --touch-target: 44px;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+button,
+select,
+input,
+textarea {
+  max-width: 100%;
+}
+
+.app {
+  width: min(100%, var(--page-max-width));
+  max-width: 100%;
+  padding-left: var(--page-padding);
+  padding-right: var(--page-padding);
+}
+
+.toolbar,
+.online-panel,
+.game-panel,
+.record-panel,
+.clock-panel,
+.meta-panel {
+  max-width: 100%;
+}
+
+.layout {
+  width: 100%;
+  min-width: 0;
+}
+
+.game-panel {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-inline: contain;
+}
+
+.board {
+  max-width: none;
+  touch-action: manipulation;
+}
+
+.hand,
+.board {
+  flex-shrink: 0;
+}
+
+.action-button,
+.hand-piece,
+.history-button,
+.ruleset-select,
+.number-input,
+.text-input {
+  min-height: var(--touch-target);
+}
+
+.signal-textarea,
+.meta-notes,
+.text-record-output {
+  min-height: 96px;
+}
+
+.connection-log,
+.history-list {
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 1100px) {
+  .app {
+    width: 100%;
+  }
+
+  .layout {
+    align-items: stretch;
+  }
+
+  .record-panel {
+    flex: 1 1 280px;
+    min-width: 260px;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --page-padding: 8px;
+    --square-size: clamp(34px, 9.4vw, 42px);
+  }
+
+  .app {
+    margin-top: 8px;
+    padding-bottom: 16px;
+  }
+
+  .app-header h1 {
+    font-size: 21px;
+  }
+
+  .note {
+    font-size: 13px;
+  }
+
+  .toolbar,
+  .clock-controls,
+  .online-controls,
+  .toolbar-group,
+  .replay-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    width: 100%;
+  }
+
+  .field-label {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .field-label:has(input[type="checkbox"]) {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .ruleset-select,
+  .action-button,
+  .number-input,
+  .hand-piece,
+  .history-button {
+    width: 100%;
+  }
+
+  .clock-header,
+  .meta-header,
+  .online-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .clock-display,
+  .status,
+  .connection-detail {
+    width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .online-badges {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .online-steps {
+    max-height: 112px;
+    overflow: auto;
+    padding-right: 4px;
+  }
+
+  .signal-textarea {
+    min-height: 92px;
+  }
+
+  .connection-log {
+    max-height: 150px;
+  }
+
+  .connection-log-meta {
+    display: block;
+    min-width: 0;
+    margin-bottom: 2px;
+  }
+
+  .record-panel {
+    min-width: 0;
+  }
+
+  .history-button {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 560px) {
+  :root {
+    --square-size: clamp(31px, 9.1vw, 38px);
+  }
+
+  .game-panel {
+    padding: 6px;
+  }
+
+  .board {
+    border-width: 2px;
+  }
+
+  .square.selected {
+    outline-width: 2px;
+  }
+
+  .square.legal::after {
+    inset: 11px;
+  }
+
+  .square.legal.capture::after {
+    inset: 5px;
+    border-width: 2px;
+  }
+
+  .piece {
+    min-width: 24px;
+    min-height: 29px;
+    padding: 1px 3px 3px;
+    border-radius: 6px 6px 4px 4px;
+    font-size: 15px;
+  }
+
+  .hand {
+    align-items: stretch;
+    flex-direction: column;
+    min-height: auto;
+  }
+
+  .hand-title {
+    min-width: 0;
+  }
+
+  .hand-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    width: 100%;
+  }
+
+  .meta-panel,
+  .clock-panel,
+  .online-panel,
+  .toolbar,
+  .record-panel {
+    border-radius: 8px;
+  }
+}
+
+@media (max-width: 380px) {
+  :root {
+    --square-size: clamp(28px, 8.8vw, 34px);
+  }
+
+  .app-header h1 {
+    font-size: 19px;
+  }
+
+  .toolbar,
+  .clock-controls,
+  .online-controls,
+  .toolbar-group,
+  .replay-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .piece {
+    min-width: 22px;
+    min-height: 27px;
+    font-size: 14px;
+  }
+}

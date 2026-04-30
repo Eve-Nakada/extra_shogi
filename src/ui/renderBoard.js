@@ -1,8 +1,7 @@
 import { getSquare } from "../core/coordinates.js";
 
 export function renderBoard(boardElement, state, uiState) {
-  boardElement.style.setProperty("--board-width", state.board.width);
-  boardElement.style.setProperty("--board-height", state.board.height);
+  setBoardCssVariables(boardElement, state);
   boardElement.innerHTML = "";
 
   for (let y = 0; y < state.board.height; y += 1) {
@@ -33,6 +32,21 @@ export function renderBoard(boardElement, state, uiState) {
 
       boardElement.appendChild(square);
     }
+  }
+}
+
+
+function setBoardCssVariables(boardElement, state) {
+  const targets = [
+    boardElement,
+    boardElement.closest(".game-panel"),
+    boardElement.closest(".layout"),
+    boardElement.closest("#app")
+  ].filter(Boolean);
+
+  for (const target of targets) {
+    target.style.setProperty("--board-width", state.board.width);
+    target.style.setProperty("--board-height", state.board.height);
   }
 }
 
