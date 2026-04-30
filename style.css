@@ -1579,3 +1579,103 @@ textarea {
     font-size: 8px;
   }
 }
+
+/* v1.4 preferences and extension documentation. */
+.view-options-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.hand[data-position="top"] .hand-title::before {
+  content: "上段 / ";
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hand[data-position="bottom"] .hand-title::before {
+  content: "下段 / ";
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.definition-panel {
+  margin-bottom: 10px;
+}
+
+.definition-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.definition-grid section {
+  padding: 10px;
+  border: 1px solid #e1d4be;
+  border-radius: 8px;
+  background: #fdf8ed;
+}
+
+.definition-grid h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.definition-grid p {
+  margin: 0 0 8px;
+  color: #444;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.definition-list {
+  margin: 0;
+}
+
+.definition-list div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.definition-list dt {
+  font-weight: 900;
+}
+
+.definition-list dd {
+  margin: 0;
+  color: #444;
+  font-size: 13px;
+}
+
+.code-sample {
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px;
+  border: 1px solid #d7c8aa;
+  border-radius: 6px;
+  background: #fffdf7;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .definition-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .definition-grid section {
+    padding: 8px;
+  }
+
+  .definition-list div {
+    grid-template-columns: 1fr;
+  }
+}

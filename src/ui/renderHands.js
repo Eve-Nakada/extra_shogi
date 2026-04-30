@@ -1,7 +1,10 @@
 import { playerName } from "../core/state.js";
 
-export function renderHands(handElement, state, owner, uiState) {
+export function renderHands(handElement, state, owner, uiState, options = {}) {
   handElement.innerHTML = "";
+  handElement.dataset.owner = owner;
+  handElement.dataset.position = options.position ?? "";
+  handElement.setAttribute("aria-label", `${playerName(owner)}の持ち駒`);
   handElement.classList.toggle("active-turn", state.status.type === "playing" && owner === state.turn);
   handElement.classList.toggle("inactive-turn", state.status.type === "playing" && owner !== state.turn);
 

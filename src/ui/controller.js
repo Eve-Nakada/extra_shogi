@@ -16,6 +16,7 @@ import { renderBoard } from "./renderBoard.js";
 import { renderHands } from "./renderHands.js";
 import { renderHistory } from "./renderHistory.js";
 import { renderConnectionLog } from "./renderConnectionLog.js";
+import { loadViewPreferences, saveViewPreferences } from "./viewPreferences.js";
 
 const LOCAL_SAVE_KEY = "shogi-html:last-game";
 
@@ -65,12 +66,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     legalMoves: [],
     replayIndex: null,
     readonly: false,
-    view: {
-      perspective: "black",
-      showLegalMoves: true,
-      confirmResign: true,
-      confirmReset: true
-    }
+    view: loadViewPreferences()
   };
 
   initializeRulesetSelect();
@@ -100,23 +96,28 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.promotionCancelButton.addEventListener("click", cancelPromotionChoice);
     elements.boardPerspectiveSelect.addEventListener("change", () => {
       uiState.view.perspective = elements.boardPerspectiveSelect.value === "white" ? "white" : "black";
+      saveCurrentViewPreferences();
       clearSelection();
       renderAll();
     });
     elements.flipBoardButton.addEventListener("click", () => {
       uiState.view.perspective = uiState.view.perspective === "black" ? "white" : "black";
+      saveCurrentViewPreferences();
       clearSelection();
       renderAll();
     });
     elements.legalHighlightEnabled.addEventListener("change", () => {
       uiState.view.showLegalMoves = elements.legalHighlightEnabled.checked;
+      saveCurrentViewPreferences();
       renderAll();
     });
     elements.confirmResignEnabled.addEventListener("change", () => {
       uiState.view.confirmResign = elements.confirmResignEnabled.checked;
+      saveCurrentViewPreferences();
     });
     elements.confirmResetEnabled.addEventListener("change", () => {
       uiState.view.confirmReset = elements.confirmResetEnabled.checked;
+      saveCurrentViewPreferences();
     });
 
     elements.historyList.addEventListener("click", event => {
@@ -685,8 +686,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     uiState.readonly = isReplayMode() || (onlineSession.isOnlineMode() && !canActOnCurrentTurn());
 
     renderBoard(elements.board, displayState, uiState);
-    renderHands(elements.whiteHand, displayState, "white", uiState);
-    renderHands(elements.blackHand, displayState, "black", uiState);
+    renderPerspectiveHands(displayState);
     renderHistory(elements.historyList, state, uiState);
     if (elements.historyCount) elements.historyCount.textContent = String(state.history.length) + "手";
 
@@ -703,8 +703,20 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     renderConnectionLog(elements.connectionLog, connectionLog);
   }
 
+  function renderPerspectiveHands(displayState) {
+    const topOwner = uiState.view.perspective === "white" ? "black" : "white";
+    const bottomOwner = uiState.view.perspective === "white" ? "white" : "black";
+
+    renderHands(elements.whiteHand, displayState, topOwner, uiState, { position: "top" });
+    renderHands(elements.blackHand, displayState, bottomOwner, uiState, { position: "bottom" });
+  }
+
+  function saveCurrentViewPreferences() {
+    saveViewPreferences(uiState.view);
+  }
 
   function renderTurnBar(displayState) {
+
     if (!elements.turnBar) return;
 
     const snapshot = onlineSession.getSnapshot();

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>盤上ゲーム - 将棋HTML v1.3</title>
+  <title>盤上ゲーム - 将棋HTML v1.4</title>
   <meta name="description" content="HTML/CSS/JavaScriptだけで動作する、ローカル対局・棋譜保存・軽量通信対戦対応の将棋系盤上ゲームです。">
   <link rel="stylesheet" href="./style.css">
 </head>
@@ -11,15 +11,17 @@
   <main id="app" class="app">
     <header class="app-header compact-header">
       <div>
-        <p class="version-badge">v1.3 UI改善 Phase 3</p>
+        <p class="version-badge">v1.4 表示設定・拡張説明</p>
         <h1>盤上ゲーム - 将棋HTML</h1>
-        <p class="note">盤面補助表示強化 / ローカル対局・棋譜保存・軽量通信対戦対応</p>
+        <p class="note">表示設定保存・駒台視点連動・拡張説明 / ローカル対局・棋譜保存・軽量通信対戦対応</p>
       </div>
       <nav class="quick-nav" aria-label="画面内ナビゲーション">
         <a href="#board">盤面</a>
         <a href="#settings-panel">設定</a>
         <a href="#online-help">通信</a>
         <a href="#record-help">保存・棋譜</a>
+        <a href="#piece-guide">駒説明</a>
+        <a href="#board-effect-guide">盤面効果</a>
       </nav>
     </header>
 
@@ -68,6 +70,7 @@
           初期化前に確認
         </label>
       </div>
+      <p class="view-options-note">表示設定はこのブラウザのlocalStorageに保存され、次回起動時に復元されます。盤面視点を切り替えると駒台の上下配置も連動します。</p>
     </section>
 
     <div class="layout primary-layout">
@@ -245,6 +248,64 @@
       </ul>
     </details>
 
+
+
+    <details id="piece-guide" class="definition-panel compact-panel">
+      <summary>駒の動かし方の説明</summary>
+      <div class="definition-grid">
+        <section>
+          <h3>移動定義</h3>
+          <p>駒の動きはルールセット内の <code>moves</code> 配列で定義します。今後駒を増やす場合も、UI側に個別の駒名や移動処理を書かず、駒定義だけを増やします。</p>
+          <dl class="definition-list">
+            <div><dt><code>step</code></dt><dd>指定方向へ1マス移動します。金・銀・玉などに使います。</dd></div>
+            <div><dt><code>slide</code></dt><dd>指定方向へ、駒や盤端に当たるまで直線移動します。飛・角・香などに使います。</dd></div>
+            <div><dt><code>jump</code></dt><dd>途中の駒を飛び越えて指定先へ移動します。桂馬や拡張駒に使います。</dd></div>
+          </dl>
+        </section>
+        <section>
+          <h3>方向指定</h3>
+          <p><code>dx</code> は横方向、<code>dy</code> は盤面そのものの縦方向、<code>fy</code> は自分から見た前方向です。先手と後手で前方向が反転する駒は <code>fy</code> を使います。</p>
+          <pre class="code-sample"><code>{ kind: "step", dx: 0, fy: 1 }
+{ kind: "slide", dx: 1, dy: 0 }
+{ kind: "jump", dx: -1, fy: 2 }</code></pre>
+        </section>
+        <section>
+          <h3>成り・持ち駒</h3>
+          <p>成駒は <code>promoted: true</code> の状態フラグではなく、別の駒IDとして扱います。取られたときは <code>capturedAs</code> を参照し、元の駒として持ち駒へ戻します。</p>
+          <pre class="code-sample"><code>P  -> TO
+R  -> PR
+TO.capturedAs = "P"</code></pre>
+        </section>
+      </div>
+    </details>
+
+    <details id="board-effect-guide" class="definition-panel compact-panel">
+      <summary>盤面効果の説明</summary>
+      <div class="definition-grid">
+        <section>
+          <h3>現在の扱い</h3>
+          <p>現時点の盤面は、駒の存在、合法手、選択状態、最後の指し手、王手中の玉などを描画する静的なマスです。盤面効果はまだ勝敗や合法手に影響しません。</p>
+        </section>
+        <section>
+          <h3>今後追加する場合の方針</h3>
+          <p>盤面効果を追加する場合は、駒定義とは別に <code>board.effects</code> またはルールセット側の <code>effects</code> として定義します。UIは効果表示、ロジックは合法手・勝敗への影響を担当します。</p>
+          <pre class="code-sample"><code>effects: [
+  { kind: "blocked", x: 4, y: 4 },
+  { kind: "bonus", x: 2, y: 2, value: 1 }
+]</code></pre>
+        </section>
+        <section>
+          <h3>効果タイプ候補</h3>
+          <dl class="definition-list">
+            <div><dt><code>blocked</code></dt><dd>進入不可マス。移動・駒打ちの合法手生成で除外します。</dd></div>
+            <div><dt><code>promotionZone</code></dt><dd>成り条件を変えるマス。派生ルール用です。</dd></div>
+            <div><dt><code>bonus</code></dt><dd>点数・勝敗判定に影響するマス。持将棋や派生ルール用です。</dd></div>
+            <div><dt><code>teleport</code></dt><dd>特殊移動マス。通常の <code>move</code> とは別仕様として扱います。</dd></div>
+          </dl>
+        </section>
+      </div>
+    </details>
+
     <details class="help-panel compact-panel">
       <summary>操作説明</summary>
       <div class="help-grid">
@@ -275,11 +336,11 @@
           </ol>
         </section>
       </div>
-      <p class="help-note">通信対戦は不正対策なしの軽量方式です。接続コードは信頼できる相手にのみ共有してください。</p>
+      <p class="help-note">通信対戦は不正対策なしの軽量方式です。接続コードは信頼できる相手にのみ共有してください。駒追加や盤面効果追加は、駒定義・ルールセット定義を拡張し、UI側へルールを直書きしない方針です。</p>
     </details>
 
     <footer class="app-footer">
-      <p>v1.3 / UI改善 Phase 3。盤面反転、最後の指し手、王手中の玉、表示・確認設定を追加しました。</p>
+      <p>v1.4 / 表示設定保存・駒台視点連動・拡張説明。駒追加と盤面効果追加に備えた説明を追加しました。</p>
     </footer>
   </main>
 
