@@ -253,6 +253,93 @@ export function finalizeSetupPlayer(state, player = getSetupPlayer(state)) {
   return cloneSetup(state.setup);
 }
 
+
+export function autoPlaceSetupPieces(state, player = getSetupPlayer(state), seed = createSeed()) {
+  assertSetupSelectionMutable(state, player);
+  const selected = state.setup?.selectedPieces?.[player] ?? {};
+  if (Object.values(selected).reduce((sum, count) => sum + Number(count ?? 0), 0) <= 0) {
+    throw new Error("ランダム配置する駒が選択されていません。");
+  }
+
+  clearPlayerSetupBoard(state, player);
+  state.setup.placedPieces[player] = {};
+
+  const placements = getRandomPlacementSquares(state, player, seed);
+  const piecesToPlace = expandSelectedPiecesForPlacement(state, player);
+  const royalIndex = piecesToPlace.findIndex(pieceId => state.ruleset.pieces[pieceId]?.royal);
+
+  if (royalIndex >= 0) {
+    const royalPieceId = piecesToPlace.splice(royalIndex, 1)[0];
+    const royalSquare = getRoyalPlacementSquare(state, player);
+    if (!isSquareInPlacementZone(royalSquare, getSetupConfig(state).placementZones?.[player])) {
+      throw new Error("王・玉の固定配置マスが配置エリア外です。");
+    }
+    if (getSquare(state, royalSquare.x, royalSquare.y)) {
+      throw new Error("王・玉の固定配置マスが空いていません。");
+    }
+    placeSetupPieceDirectly(state, player, royalPieceId, royalSquare);
+    removeSquareFromList(placements, royalSquare);
+  }
+
+  if (piecesToPlace.length > placements.length) {
+    throw new Error("配置可能マスが足りません。");
+  }
+
+  for (const pieceId of piecesToPlace) {
+    const square = placements.shift();
+    placeSetupPieceDirectly(state, player, pieceId, square);
+  }
+
+  logSetupEvent(state, player, "randomPlacement", { seed });
+  return cloneSetup(state.setup);
+}
+
+function expandSelectedPiecesForPlacement(state, player) {
+  const selected = state.setup?.selectedPieces?.[player] ?? {};
+  const result = [];
+  for (const [pieceId, count] of Object.entries(selected)) {
+    for (let i = 0; i < Number(count ?? 0); i += 1) result.push(pieceId);
+  }
+  return result;
+}
+
+function getRandomPlacementSquares(state, player, seed) {
+  const zone = getSetupConfig(state).placementZones?.[player];
+  const squares = [];
+  for (let y = 0; y < state.board.height; y += 1) {
+    for (let x = 0; x < state.board.width; x += 1) {
+      const square = { x, y };
+      if (!isSquareInPlacementZone(square, zone)) continue;
+      if (getSquare(state, x, y)) continue;
+      squares.push(square);
+    }
+  }
+
+  const rng = createSeededRandom(seed);
+  for (let i = squares.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    [squares[i], squares[j]] = [squares[j], squares[i]];
+  }
+  return squares;
+}
+
+function getRoyalPlacementSquare(state, player) {
+  const x = Math.floor(state.board.width / 2);
+  const y = player === "black" ? state.board.height - 1 : 0;
+  return { x, y };
+}
+
+function placeSetupPieceDirectly(state, player, pieceId, square) {
+  setSquare(state, square.x, square.y, { owner: player, id: pieceId });
+  const placed = state.setup.placedPieces[player];
+  placed[pieceId] = (placed[pieceId] ?? 0) + 1;
+}
+
+function removeSquareFromList(squares, square) {
+  const index = squares.findIndex(candidate => candidate.x === square.x && candidate.y === square.y);
+  if (index >= 0) squares.splice(index, 1);
+}
+
 export function calculatePieceSetCost(state, pieces) {
   return Object.entries(pieces ?? {}).reduce((total, [pieceId, count]) => total + getPiecePoint(state.ruleset, pieceId) * count, 0);
 }

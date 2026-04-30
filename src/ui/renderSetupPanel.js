@@ -281,9 +281,19 @@ function createSelectedList(state, player, selected, unplaced) {
 
 function createPlacementList(state, uiState, player, unplaced) {
   const section = createSection("配置フェーズ");
+  const actions = document.createElement("div");
+  actions.className = "setup-actions";
+  const randomPlacement = document.createElement("button");
+  randomPlacement.type = "button";
+  randomPlacement.className = "action-button";
+  randomPlacement.dataset.setupAction = "random-placement";
+  randomPlacement.textContent = "ランダム配置";
+  actions.appendChild(randomPlacement);
+  section.appendChild(actions);
+
   const entries = Object.entries(unplaced).filter(([, count]) => count > 0);
   if (!entries.length) {
-    section.appendChild(paragraph("未配置の駒はありません。編成を確定できます。"));
+    section.appendChild(paragraph("未配置の駒はありません。必要に応じてランダム配置で再配置できます。編成を確定できます。"));
     return section;
   }
 
@@ -303,7 +313,7 @@ function createPlacementList(state, uiState, player, unplaced) {
     list.appendChild(button);
   }
   section.appendChild(list);
-  section.appendChild(paragraph("配置可能エリアは盤面上に薄く表示されます。配置したい駒を選んでから、盤面の自陣配置エリアをクリックしてください。配置済みの自駒をクリックすると盤面から外せます。"));
+  section.appendChild(paragraph("配置可能エリアは盤面上に薄く表示されます。ランダム配置では王・玉を中央端へ固定し、その他の駒を配置エリア内に自動配置します。手動配置では、駒を選んでから盤面をクリックしてください。"));
   return section;
 }
 

@@ -38,6 +38,10 @@ export const SETUP_SHOGI = {
       black: { yMin: 5, yMax: 6 },
       white: { yMin: 0, yMax: 1 }
     },
+    randomPlacement: {
+      enabled: true,
+      royalPosition: "centerEdge"
+    },
     maxCopies: {
       K: 1,
       R: 1,

@@ -14,6 +14,7 @@ import { applyIncomingMove, createMoveMessage, sameMove, createSyncRequestMessag
 import { parseSignal, summarizeSignal, canAcceptSignalForCurrentSession } from "../src/net/rtcSession.js";
 import { EXPANDED_SHOGI } from "../src/rulesets/expandedShogi.js";
 import { RULESET_BY_ID } from "../src/rulesets/index.js";
+import { SMALL_SHOGI } from "../src/rulesets/smallShogi.js";
 import { STANDARD_SHOGI } from "../src/rulesets/standardShogi.js";
 import { createKifLikeGameRecord, createTextGameRecord } from "../src/core/notation.js";
 import { normalizeGameMeta } from "../src/core/meta.js";
@@ -802,7 +803,8 @@ test("v1.9 buildBase actionは通信比較できる", () => {
 });
 
 import { SETUP_SHOGI } from "../src/rulesets/setupShogi.js";
-import { addSetupPiece, applyPlacement, canFinalizeSetupPlayer, finalizeSetupPlayer, generateRandomPacks, getLegalPlacements, getSelectedSetupCost, getSetupBudget, getSetupPlayer, isSetupActive, selectFixedPack, selectGeneratedPack } from "../src/core/setup.js";
+import { addSetupPiece, applyPlacement, autoPlaceSetupPieces, canFinalizeSetupPlayer, finalizeSetupPlayer, generateRandomPacks, getLegalPlacements, getSelectedSetupCost, getSetupBudget, getSetupPlayer, isSetupActive, selectFixedPack, selectGeneratedPack } from "../src/core/setup.js";
+import { isDropAllowedByPolicy } from "../src/core/base.js";
 
 test("v2.0 編成検証ルールセットはsetup phaseから開始する", () => {
   const state = createInitialState(SETUP_SHOGI);
@@ -1054,4 +1056,34 @@ test("v2.4 追加駒は拡張ルールセットと編成対象に定義される
   assert.equal(EXPANDED_SHOGI.pieces.EG.actions.some(action => action.kind === "buildBase" && action.baseType === "carrier"), true);
   assert.equal(EXPANDED_SHOGI.pieces.SRM.actions.some(action => action.kind === "attackBase"), true);
   assert.equal(EXPANDED_SHOGI.pieces.IW.captureRules[0].kind, "requiresAttackerAttribute");
+});
+
+
+test("v2.5 拠点建設後も自陣へ駒を打てる", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  state.bases = [{ id: "black-castle-test", owner: "black", kind: "castle", x: 0, y: 0, hp: 3, maxHp: 3, providesDropZone: true, dropRadius: 1, captureMode: "occupy" }];
+
+  assert.equal(isDropAllowedByPolicy(state, "black", { x: 10, y: 10 }), true);
+  assert.equal(isDropAllowedByPolicy(state, "black", { x: 10, y: 0 }), false);
+});
+
+test("v2.5 小型将棋は5x5盤面で中央端に玉を配置する", () => {
+  const state = createInitialState(SMALL_SHOGI);
+
+  assert.equal(state.board.width, 5);
+  assert.equal(state.board.height, 5);
+  assert.deepEqual(getSquare(state, 2, 4), { owner: "black", id: "K" });
+  assert.deepEqual(getSquare(state, 2, 0), { owner: "white", id: "K" });
+});
+
+test("v2.5 編成ランダム配置は王を真ん中の端に固定する", () => {
+  const state = createInitialState(SETUP_SHOGI);
+  selectFixedPack(state, "balanced", "black");
+
+  autoPlaceSetupPieces(state, "black", "test-seed");
+
+  assert.deepEqual(getSquare(state, Math.floor(state.board.width / 2), state.board.height - 1), { owner: "black", id: "K" });
+  assert.equal(Object.values(state.setup.placedPieces.black).reduce((sum, count) => sum + count, 0), Object.values(state.setup.selectedPieces.black).reduce((sum, count) => sum + count, 0));
 });
