@@ -27,6 +27,13 @@ export function getPieceAttributeLabel(attribute) {
   return ATTRIBUTE_LABELS[attribute] ?? attribute;
 }
 
+export function getPieceAttributes(ruleset, pieceId, context = {}) {
+  const pieceDef = ruleset?.pieces?.[pieceId];
+  if (!pieceDef) return [];
+  const attrs = Array.isArray(pieceDef.attributes) ? [...pieceDef.attributes] : [];
+  return [...new Set(attrs)];
+}
+
 export function getPiecePoint(ruleset, pieceId) {
   const pieceDef = ruleset?.pieces?.[pieceId];
   if (!pieceDef) return 0;

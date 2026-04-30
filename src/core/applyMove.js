@@ -1,3 +1,4 @@
+import { canCapture } from "./capture.js";
  
 import { cloneMove, cloneState, opposite } from "./state.js";
 import { getSquare, setSquare } from "./coordinates.js";
@@ -53,6 +54,13 @@ function applyBoardMove(state, mover, move) {
   const target = getSquare(state, move.to.x, move.to.y);
   if (target && target.owner === mover) {
     throw new Error("移動先に自分の駒があります。");
+  }
+
+  if (target && !canCapture(state, piece, target, {
+    attackerSquare: move.from,
+    defenderSquare: move.to
+  })) {
+    throw new Error("この駒は捕獲制限により取れません。");
   }
 
   if (target) {

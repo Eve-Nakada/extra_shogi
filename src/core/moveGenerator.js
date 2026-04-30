@@ -1,4 +1,4 @@
- 
+import { canCapture } from "./capture.js";
 import { getSquare, inBoard } from "./coordinates.js";
 
 export function generatePseudoMoves(state, selection) {
@@ -35,9 +35,14 @@ export function generateBoardPseudoMoves(state, x, y) {
         const target = getSquare(state, toX, toY);
         if (target?.owner === piece.owner) break;
 
-        moves.push(...expandPromotionChoices(state, piece, { x, y }, { x: toX, y: toY }));
+        if (!target || canCapture(state, piece, target, {
+          attackerSquare: { x, y },
+          defenderSquare: { x: toX, y: toY }
+        })) {
+          moves.push(...expandPromotionChoices(state, piece, { x, y }, { x: toX, y: toY }));
+        }
 
-        if (target && target.owner !== piece.owner) break;
+        if (target) break;
         toX += delta.dx;
         toY += delta.dy;
       }
@@ -52,6 +57,10 @@ export function generateBoardPseudoMoves(state, x, y) {
 
       const target = getSquare(state, toX, toY);
       if (target?.owner === piece.owner) continue;
+      if (target && !canCapture(state, piece, target, {
+        attackerSquare: { x, y },
+        defenderSquare: { x: toX, y: toY }
+      })) continue;
 
       moves.push(...expandPromotionChoices(state, piece, { x, y }, { x: toX, y: toY }));
     }
@@ -166,5 +175,3 @@ export function resolveDelta(moveDef, owner) {
 
   return { dx, dy };
 }
- 
- 

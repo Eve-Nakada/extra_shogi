@@ -1,4 +1,4 @@
- 
+import { canCapture } from "./capture.js";
 import { fromIndex, getSquare, inBoard } from "./coordinates.js";
 import { resolveDelta } from "./moveGenerator.js";
 
@@ -28,14 +28,23 @@ export function isInCheck(state, player) {
 }
 
 export function isSquareAttacked(state, x, y, byPlayer) {
+  const defender = getSquare(state, x, y);
+
   for (let index = 0; index < state.board.squares.length; index += 1) {
     const piece = state.board.squares[index];
     if (!piece || piece.owner !== byPlayer) continue;
 
     const from = fromIndex(index, state.board.width);
-    if (pieceAttacksSquare(state, piece, from, { x, y })) {
-      return true;
+    if (!pieceAttacksSquare(state, piece, from, { x, y })) continue;
+
+    if (defender && defender.owner !== byPlayer && !canCapture(state, piece, defender, {
+      attackerSquare: from,
+      defenderSquare: { x, y }
+    })) {
+      continue;
     }
+
+    return true;
   }
 
   return false;
@@ -76,5 +85,3 @@ export function pieceAttacksSquare(state, piece, from, target) {
 
   return false;
 }
- 
- 

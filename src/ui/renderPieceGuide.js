@@ -1,3 +1,4 @@
+import { summarizeCaptureRules } from "../core/capture.js";
 import { getPieceAttributeLabel, getPieceCategoryLabel } from "../core/pieceMetadata.js";
 
 export function renderPieceGuide(container, ruleset) {
@@ -18,7 +19,7 @@ export function renderPieceGuide(container, ruleset) {
     </section>
     <section>
       <h3>属性・点数</h3>
-      <p><code>description</code> / <code>category</code> / <code>point</code> / <code>attributes</code> を駒定義から自動表示します。金・玉・成駒は <code>goldLike</code> を持ちます。</p>
+      <p><code>description</code> / <code>category</code> / <code>point</code> / <code>attributes</code> / <code>captureRules</code> を駒定義から自動表示します。金・玉・成駒は <code>goldLike</code> を持ちます。</p>
     </section>
   `;
   container.appendChild(intro);
@@ -100,6 +101,7 @@ function createPieceCard(ruleset, pieceId, pieceDef) {
   appendDetail(details, "成り", pieceDef.promotesTo ? `${pieceDef.promotesTo}（${ruleset.pieces[pieceDef.promotesTo]?.name ?? "未定義"}）` : "なし");
   appendDetail(details, "持ち駒", pieceDef.droppable === false ? "打てない" : "打てる");
   appendDetail(details, "取られた時", pieceDef.capturedAs ?? "持ち駒化しない");
+  appendDetail(details, "捕獲制限", summarizeCaptureRules(pieceDef.captureRules));
   appendDetail(details, "移動", summarizeMoves(pieceDef.moves));
 
   card.append(head, description, tags, details);
