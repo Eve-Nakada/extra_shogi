@@ -14,7 +14,7 @@ import {
 } from "./moveGenerator.js";
 
 export function getLegalMoves(state, selection, options = {}) {
-  if (state.status.type !== "playing") return [];
+  if (state.status.type !== "playing" || state.phase === "setup") return [];
   if (!isSelectionAllowedByTurnState(state, selection)) return [];
 
   const pseudoMoves = generatePseudoMoves(state, selection);

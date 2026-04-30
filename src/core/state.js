@@ -2,6 +2,7 @@ import { setSquare } from "./coordinates.js";
 import { cloneClock } from "./clock.js";
 import { cloneBases } from "./base.js";
 import { createDefaultMeta, cloneGameMeta } from "./meta.js";
+import { createSetupState, cloneSetup } from "./setup.js";
 
 export function createInitialState(ruleset) {
   const width = ruleset.board.width;
@@ -15,6 +16,8 @@ export function createInitialState(ruleset) {
       height,
       squares: Array.from({ length: width * height }, () => null)
     },
+    phase: ruleset.setup?.enabled ? "setup" : "playing",
+    setup: createSetupState(ruleset),
     turn: ruleset.firstTurn ?? ruleset.players[0],
     hands: createEmptyHands(ruleset),
     bases: cloneBases(ruleset.initialBases ?? []),
@@ -29,11 +32,13 @@ export function createInitialState(ruleset) {
     turnState: createDefaultTurnState()
   };
 
-  for (const item of ruleset.initialPieces) {
-    setSquare(state, item.x, item.y, {
-      owner: item.owner,
-      id: item.id
-    });
+  if (!ruleset.setup?.enabled) {
+    for (const item of ruleset.initialPieces) {
+      setSquare(state, item.x, item.y, {
+        owner: item.owner,
+        id: item.id
+      });
+    }
   }
 
   return state;
@@ -56,6 +61,8 @@ export function cloneState(state) {
       height: state.board.height,
       squares: state.board.squares.map(piece => piece ? { ...piece } : null)
     },
+    phase: state.phase ?? "playing",
+    setup: cloneSetup(state.setup),
     turn: state.turn,
     hands: cloneHands(state.hands),
     bases: cloneBases(state.bases),

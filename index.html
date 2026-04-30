@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>盤上ゲーム - 将棋HTML v1.9</title>
+  <title>盤上ゲーム - 将棋HTML v2.0</title>
   <meta name="description" content="HTML/CSS/JavaScriptだけで動作する、ローカル対局・棋譜保存・軽量通信対戦対応の将棋系盤上ゲームです。">
   <link rel="stylesheet" href="./style.css">
 </head>
@@ -11,15 +11,16 @@
   <main id="app" class="app">
     <header class="app-header compact-header">
       <div>
-        <p class="version-badge">v1.9 拠点システム</p>
+        <p class="version-badge">v2.0 編成・パック選択</p>
         <h1>盤上ゲーム - 将棋HTML</h1>
-        <p class="note">駒定義メタ情報・属性・捕獲制限・変身・範囲効果・追加行動・拠点 / ローカル対局・棋譜保存・軽量通信対戦対応</p>
+        <p class="note">駒定義メタ情報・属性・捕獲制限・変身・範囲効果・追加行動・拠点・編成/パック選択 / ローカル対局・棋譜保存・軽量通信対戦対応</p>
       </div>
       <nav class="quick-nav" aria-label="画面内ナビゲーション">
         <a href="#board">盤面</a>
         <a href="#settings-panel">設定</a>
         <a href="#online-help">通信</a>
         <a href="#record-help">保存・棋譜</a>
+        <a href="#setup-panel">編成</a>
         <a href="#piece-guide">駒説明</a>
         <a href="#board-effect-guide">盤面効果</a>
       </nav>
@@ -72,6 +73,11 @@
       </div>
       <p class="view-options-note">表示設定はこのブラウザのlocalStorageに保存され、次回起動時に復元されます。盤面視点を切り替えると駒台の上下配置も連動します。</p>
     </section>
+
+    <details id="setup-panel" class="setup-panel compact-panel" open>
+      <summary>編成・パック選択</summary>
+      <div id="setup-content" class="setup-content" aria-live="polite"></div>
+    </details>
 
     <div class="layout primary-layout">
       <section class="game-panel" aria-label="将棋盤">

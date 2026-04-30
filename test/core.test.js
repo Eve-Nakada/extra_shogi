@@ -800,3 +800,75 @@ test("v1.9 buildBase actionは通信比較できる", () => {
     { kind: "buildBase", actor: { x: 4, y: 8 }, baseType: "castle", to: { x: 4, y: 7 }, id: null }
   ), true);
 });
+
+import { SETUP_SHOGI } from "../src/rulesets/setupShogi.js";
+import { addSetupPiece, applyPlacement, canFinalizeSetupPlayer, finalizeSetupPlayer, generateRandomPacks, getLegalPlacements, getSetupPlayer, isSetupActive, selectFixedPack, selectGeneratedPack } from "../src/core/setup.js";
+
+test("v2.0 編成検証ルールセットはsetup phaseから開始する", () => {
+  const state = createInitialState(SETUP_SHOGI);
+
+  assert.equal(state.phase, "setup");
+  assert.equal(isSetupActive(state), true);
+  assert.equal(getSetupPlayer(state), "black");
+  assert.equal(state.board.squares.every(square => square === null), true);
+  assert.deepEqual(getLegalMoves(state, { kind: "board", x: 0, y: 0 }), []);
+});
+
+test("v2.0 点数内で駒を選択し配置できる", () => {
+  const state = createInitialState(SETUP_SHOGI);
+
+  addSetupPiece(state, "K");
+  addSetupPiece(state, "G");
+
+  assert.deepEqual(state.setup.selectedPieces.black, { K: 1, G: 1 });
+  assert.equal(getLegalPlacements(state, "K", "black").some(action => action.to.x === 3 && action.to.y === 6), true);
+
+  applyPlacement(state, { kind: "placement", player: "black", pieceId: "K", to: { x: 3, y: 6 } });
+  applyPlacement(state, { kind: "placement", player: "black", pieceId: "G", to: { x: 3, y: 5 } });
+
+  assert.deepEqual(getSquare(state, 3, 6), { owner: "black", id: "K" });
+  assert.equal(canFinalizeSetupPlayer(state, "black"), true);
+});
+
+test("v2.0 固定パックを選び、両者確定後に対局へ入れる", () => {
+  const state = createInitialState(SETUP_SHOGI);
+
+  selectFixedPack(state, "balanced", "black");
+  for (const pieceId of Object.keys(state.setup.selectedPieces.black)) {
+    let remaining = state.setup.selectedPieces.black[pieceId];
+    while (remaining > 0) {
+      const [placement] = getLegalPlacements(state, pieceId, "black");
+      applyPlacement(state, placement);
+      remaining -= 1;
+    }
+  }
+  finalizeSetupPlayer(state, "black");
+
+  assert.equal(getSetupPlayer(state), "white");
+  selectFixedPack(state, "rush", "white");
+  for (const pieceId of Object.keys(state.setup.selectedPieces.white)) {
+    let remaining = state.setup.selectedPieces.white[pieceId];
+    while (remaining > 0) {
+      const [placement] = getLegalPlacements(state, pieceId, "white");
+      applyPlacement(state, placement);
+      remaining -= 1;
+    }
+  }
+  finalizeSetupPlayer(state, "white");
+
+  assert.equal(state.phase, "playing");
+  assert.equal(state.turn, "black");
+  assert.equal(isSetupActive(state), false);
+});
+
+test("v2.0 ランダムパックはseedで再現でき、選択できる", () => {
+  const a = createInitialState(SETUP_SHOGI);
+  const b = createInitialState(SETUP_SHOGI);
+
+  const packsA = generateRandomPacks(a, "seed-v20");
+  const packsB = generateRandomPacks(b, "seed-v20");
+
+  assert.deepEqual(packsA, packsB);
+  selectGeneratedPack(a, packsA[0].id, "black");
+  assert.deepEqual(a.setup.selectedPieces.black, packsA[0].pieces);
+});

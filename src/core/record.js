@@ -6,6 +6,7 @@ import { createPositionHash, detectRepetition } from "./repetition.js";
 import { evaluateImpasse } from "./impasse.js";
 import { cloneGameMeta } from "./meta.js";
 import { cloneBases } from "./base.js";
+import { cloneSetup } from "./setup.js";
 
 const CURRENT_RECORD_VERSION = 1;
 
@@ -16,12 +17,15 @@ export function createGameRecord(state) {
     savedAt: new Date().toISOString(),
     meta: cloneGameMeta(state.meta),
     rulesetId: state.rulesetId,
+    phase: state.phase ?? "playing",
+    setup: cloneSetup(state.setup),
     turn: state.turn,
     status: cloneStatus(state.status),
     positionHash: createPositionHash(state),
     repetition: detectRepetition(state),
     impasse: evaluateImpasse(state),
     clock: cloneClock(state.clock),
+    board: cloneBoardSnapshot(state),
     turnState: cloneTurnState(state.turnState),
     bases: cloneBases(state.bases),
     history: state.history.map(cloneHistoryEntry)
@@ -54,6 +58,8 @@ export function restoreGameRecord(record, rulesetsById) {
 
   const history = record.history ?? [];
   const state = replayHistory(ruleset, history, history.length);
+  state.phase = record.phase ?? state.phase ?? "playing";
+  state.setup = cloneSetup(record.setup ?? state.setup);
   state.turn = record.turn ?? state.turn;
   state.status = record.status ? cloneStatus(record.status) : {
     type: "playing",
@@ -61,6 +67,7 @@ export function restoreGameRecord(record, rulesetsById) {
     reason: null
   };
   state.clock = cloneClock(record.clock);
+  restoreBoardSnapshot(state, record.board);
   state.turnState = cloneTurnState(record.turnState);
   state.meta = cloneGameMeta(record.meta);
   state.bases = cloneBases(record.bases ?? state.bases);
@@ -98,3 +105,17 @@ function cloneStatus(status) {
 }
  
  
+
+function cloneBoardSnapshot(state) {
+  return {
+    width: state.board.width,
+    height: state.board.height,
+    squares: state.board.squares.map(piece => piece ? { ...piece } : null)
+  };
+}
+
+function restoreBoardSnapshot(state, board) {
+  if (!board || !Array.isArray(board.squares)) return;
+  if (board.width !== state.board.width || board.height !== state.board.height) return;
+  state.board.squares = board.squares.map(piece => piece ? { ...piece } : null);
+}
