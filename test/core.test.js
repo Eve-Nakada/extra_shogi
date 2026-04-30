@@ -10,7 +10,7 @@ import { serializeGameRecord, parseGameRecord, restoreGameRecord, createGameReco
 import { replayHistory } from "../src/core/replay.js";
 import { createInitialState } from "../src/core/state.js";
 import { undoLastMove } from "../src/core/undo.js";
-import { applyIncomingMove, createMoveMessage, sameMove, createSyncRequestMessage, createPingMessage, createPongMessage, isCompatibleProtocol } from "../src/net/gameSync.js";
+import { applyIncomingMove, createMoveMessage, sameMove, createSyncRequestMessage, createPingMessage, createPongMessage, isCompatibleProtocol, createSetupMessage, applyIncomingSetup } from "../src/net/gameSync.js";
 import { parseSignal, summarizeSignal, canAcceptSignalForCurrentSession } from "../src/net/rtcSession.js";
 import { EXPANDED_SHOGI } from "../src/rulesets/expandedShogi.js";
 import { RULESET_BY_ID } from "../src/rulesets/index.js";
@@ -871,4 +871,59 @@ test("v2.0 ランダムパックはseedで再現でき、選択できる", () =>
   assert.deepEqual(packsA, packsB);
   selectGeneratedPack(a, packsA[0].id, "black");
   assert.deepEqual(a.setup.selectedPieces.black, packsA[0].pieces);
+});
+
+
+test("v2.1 編成フェーズは通信setupメッセージで同期できる", () => {
+  const sender = createInitialState(SETUP_SHOGI);
+  addSetupPiece(sender, "K", "black");
+  applyPlacement(sender, { kind: "placement", player: "black", pieceId: "K", to: { x: 3, y: 6 } });
+
+  const message = createSetupMessage(sender, "placePiece", "black");
+  const result = applyIncomingSetup(message, RULESET_BY_ID);
+
+  assert.equal(message.type, "setup");
+  assert.equal(result.ok, true);
+  assert.deepEqual(getSquare(result.state, 3, 6), { owner: "black", id: "K" });
+  assert.equal(result.state.setup.setupLog.length >= 2, true);
+});
+
+test("v2.1 同時編成モードでは後手も先手確定前に編成できる", () => {
+  const state = createInitialState(SETUP_SHOGI);
+
+  addSetupPiece(state, "K", "white");
+  applyPlacement(state, { kind: "placement", player: "white", pieceId: "K", to: { x: 3, y: 0 } });
+
+  assert.deepEqual(state.setup.selectedPieces.white, { K: 1 });
+  assert.deepEqual(getSquare(state, 3, 0), { owner: "white", id: "K" });
+  assert.equal(state.setup.flow, "simultaneous");
+});
+
+test("v2.1 編成完了後の初期局面をリプレイ基準局面として保存する", () => {
+  const state = createInitialState(SETUP_SHOGI);
+  selectFixedPack(state, "balanced", "black");
+  for (const pieceId of Object.keys(state.setup.selectedPieces.black)) {
+    let remaining = state.setup.selectedPieces.black[pieceId];
+    while (remaining > 0) {
+      applyPlacement(state, getLegalPlacements(state, pieceId, "black")[0]);
+      remaining -= 1;
+    }
+  }
+  finalizeSetupPlayer(state, "black");
+  selectFixedPack(state, "rush", "white");
+  for (const pieceId of Object.keys(state.setup.selectedPieces.white)) {
+    let remaining = state.setup.selectedPieces.white[pieceId];
+    while (remaining > 0) {
+      applyPlacement(state, getLegalPlacements(state, pieceId, "white")[0]);
+      remaining -= 1;
+    }
+  }
+  finalizeSetupPlayer(state, "white");
+
+  const replayed = replayHistory(SETUP_SHOGI, state.history, 0, { initialPosition: state.initialPosition });
+  assert.equal(replayed.phase, "playing");
+  assert.deepEqual(replayed.board.squares, state.initialPosition.board.squares);
+
+  const text = createTextGameRecord(state);
+  assert.equal(text.includes("編成履歴"), true);
 });

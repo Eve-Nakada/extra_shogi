@@ -10,14 +10,14 @@ import { replayHistory } from "../core/replay.js";
 import { isExtraActionTurnState, opposite, playerName } from "../core/state.js";
 import { addSetupPiece, applyPlacement, finalizeSetupPlayer, generateRandomPacks, getLegalPlacements, getSetupPlayer, isSetupActive, removeSetupPiece, removeSetupPlacementAt, selectFixedPack, selectGeneratedPack } from "../core/setup.js";
 import { undoLastMove } from "../core/undo.js";
-import { applyIncomingClock, applyIncomingMove, applyIncomingResign, createClockMessage, createMoveMessage, createPingMessage, createPongMessage, createResignMessage, createSyncMessage, createSyncRequestMessage } from "../net/gameSync.js";
+import { applyIncomingClock, applyIncomingMove, applyIncomingResign, applyIncomingSetup, createClockMessage, createMoveMessage, createPingMessage, createPongMessage, createResignMessage, createSetupMessage, createSyncMessage, createSyncRequestMessage } from "../net/gameSync.js";
 import { createConnectionLog, addConnectionLog, clearConnectionLog, createSnapshotText, summarizeMessage } from "../net/connectionLog.js";
 import { RtcGameSession } from "../net/rtcSession.js";
 import { renderBoard } from "./renderBoard.js";
 import { renderHands } from "./renderHands.js";
 import { renderHistory } from "./renderHistory.js";
 import { renderConnectionLog } from "./renderConnectionLog.js";
-import { renderPieceGuide } from "./renderPieceGuide.js";
+import { renderPieceGuide, renderSelectedPieceGuide } from "./renderPieceGuide.js";
 import { renderSetupPanel } from "./renderSetupPanel.js";
 import { loadViewPreferences, saveViewPreferences } from "./viewPreferences.js";
 
@@ -70,6 +70,8 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     specialActions: [],
     setupSelectedPieceId: null,
     setupPlacements: [],
+    multiMoveCompounds: [],
+    multiMovePlan: null,
     replayIndex: null,
     readonly: false,
     view: loadViewPreferences()
@@ -297,6 +299,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   function handleBoardClick(x, y) {
     if (isSetupActive(state)) return handleSetupBoardClick(x, y);
     if (!canActOnCurrentTurn()) return;
+    if (uiState.multiMovePlan) return handleMultiMovePlanBoardClick(x, y);
     const selectedMove = findSelectedMoveTo(x, y);
     if (selectedMove) return applySelectedMove(x, y);
     const piece = getSquare(state, x, y);
@@ -326,6 +329,9 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   }
 
   function applySelectedMove(x, y) {
+    const multiMoveFirst = chooseMultiMoveFirstMove(x, y);
+    if (multiMoveFirst) return startMultiMovePlan(multiMoveFirst);
+
     const choice = chooseMoveForTarget(x, y);
     if (!choice) return;
 
@@ -406,6 +412,8 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     uiState.selected = null;
     uiState.legalMoves = [];
     uiState.specialActions = [];
+    uiState.multiMoveCompounds = [];
+    uiState.multiMovePlan = null;
     uiState.setupSelectedPieceId = null;
     uiState.setupPlacements = [];
     if (pendingPromotionChoice) closePromotionChoice();
@@ -433,7 +441,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function getDisplayState() {
     if (!isReplayMode()) return state;
-    return replayHistory(state.ruleset, state.history, uiState.replayIndex);
+    return replayHistory(state.ruleset, state.history, uiState.replayIndex, { initialPosition: state.initialPosition ?? state.setup?.initialPosition });
   }
 
   function canActOnCurrentTurn() {
@@ -443,6 +451,20 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     const snapshot = onlineSession.getSnapshot();
     if (snapshot.spectating) return false;
     return snapshot.connected && snapshot.localPlayer === state.turn;
+  }
+
+  function canEditSetupPlayer(player) {
+    if (!isSetupActive(state) || isReplayMode()) return false;
+    if (!onlineSession.isOnlineMode()) return true;
+    const snapshot = onlineSession.getSnapshot();
+    if (snapshot.spectating) return false;
+    return snapshot.connected && snapshot.localPlayer === player;
+  }
+
+  function getEditableSetupPlayer() {
+    const snapshot = onlineSession.getSnapshot();
+    if (onlineSession.isOnlineMode() && snapshot.localPlayer && snapshot.localPlayer !== "spectator") return snapshot.localPlayer;
+    return getSetupPlayer(state);
   }
 
   function getLocalResigningPlayer() {
@@ -563,6 +585,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       return;
     }
     if (message.type === "sync") return receiveSyncMessage(message);
+    if (message.type === "setup") return receiveSetupMessage(message);
     if (message.type === "move") return receiveMoveMessage(message);
     if (message.type === "resign") return receiveResignMessage(message);
     if (message.type === "clock") return receiveClockMessage(message);
@@ -584,6 +607,23 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  function receiveSetupMessage(message) {
+    const result = applyIncomingSetup(message, rulesetsById);
+    if (!result.ok) {
+      const text = createIncomingErrorText(result);
+      if (onlineSession.isConnected()) sendOnlineMessage(createSyncRequestMessage(state, result.reason));
+      setMessage(`${text} 同期要求を送信しました。`);
+      return;
+    }
+    state = result.state;
+    currentRulesetId = state.rulesetId;
+    elements.rulesetSelect.value = currentRulesetId;
+    clearSelection();
+    clearReplay();
+    renderAll();
+    setMessage("相手の編成操作を反映しました。");
   }
 
   function receiveMoveMessage(message) {
@@ -717,6 +757,9 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     renderOnlinePanel();
     renderConnectionLog(elements.connectionLog, connectionLog);
     renderPieceGuide(elements.pieceGuideContent, displayState.ruleset);
+    renderSelectedPieceGuide(elements.selectedPieceGuide, displayState, uiState.selected);
+    uiState.setupPlayer = isSetupActive(state) ? getEditableSetupPlayer() : null;
+    uiState.setupReadonly = isSetupActive(state) && !canEditSetupPlayer(uiState.setupPlayer);
     renderSetupPanel(elements.setupPanel, elements.setupContent, displayState, uiState);
     renderSpecialActions(displayState);
   }
@@ -838,9 +881,9 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.onlineGameId.textContent = snapshot.gameId ? snapshot.gameId.slice(0, 8) : "-";
     elements.connectionDetail.textContent = createSnapshotText(snapshot);
 
-    elements.hostOfferButton.disabled = onlineMode || isReplayMode() || isSetupActive(state);
-    elements.guestAnswerButton.disabled = onlineMode || isReplayMode() || isSetupActive(state);
-    elements.spectatorAnswerButton.disabled = onlineMode || isReplayMode() || isSetupActive(state);
+    elements.hostOfferButton.disabled = onlineMode || isReplayMode();
+    elements.guestAnswerButton.disabled = onlineMode || isReplayMode();
+    elements.spectatorAnswerButton.disabled = onlineMode || isReplayMode();
     elements.hostAcceptAnswerButton.disabled = !(snapshot.role && (snapshot.status === "waiting-answer" || snapshot.status === "waiting-connect"));
     elements.reconnectOfferButton.disabled = !(snapshot.gameId && (snapshot.status === "disconnected" || snapshot.status === "failed"));
     elements.copySignalButton.disabled = !elements.signalOutput.value;
@@ -854,7 +897,9 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   function setActionsForSelection(selection) {
     const actions = getLegalActions(state, selection);
     uiState.legalMoves = actions.filter(action => action.kind === "move" || action.kind === "drop");
-    uiState.specialActions = actions.filter(action => action.kind === "transform" || action.kind === "compound" || action.kind === "buildBase");
+    uiState.multiMoveCompounds = actions.filter(action => action.kind === "compound");
+    uiState.specialActions = actions.filter(action => action.kind === "transform" || action.kind === "buildBase");
+    uiState.multiMovePlan = null;
   }
 
   function handleSpecialActionClick(event) {
@@ -863,6 +908,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     const index = Number(button.dataset.actionIndex);
     const action = uiState.specialActions[index];
     if (!action) return;
+    if (action.kind === "multiMoveStop") return executeMove(action.move);
     executeMove(action);
   }
 
@@ -878,8 +924,8 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       return;
     }
 
-    const selectedActions = uiState.specialActions.filter(action => action.kind === "transform" || action.kind === "compound" || action.kind === "buildBase");
-    const triggered = getAvailableTriggeredActions(state, state.turn);
+    const selectedActions = uiState.specialActions.filter(action => action.kind === "transform" || action.kind === "buildBase" || action.kind === "multiMoveStop");
+    const triggered = uiState.multiMovePlan ? [] : getAvailableTriggeredActions(state, state.turn);
     const actions = [...selectedActions, ...triggered];
     uiState.specialActions = actions;
 
@@ -914,6 +960,10 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       const beforeDef = target ? state.ruleset.pieces[target.id] : null;
       const afterDef = state.ruleset.pieces[action.promoteTo];
       return `${beforeDef?.display ?? target?.id ?? "駒"} → ${afterDef?.display ?? action.promoteTo} に効果成り`;
+    }
+
+    if (action.kind === "multiMoveStop") {
+      return `ここで停止 ${formatActionPath(action.move)}`;
     }
 
     if (action.kind === "compound") {
@@ -977,26 +1027,31 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function handleSetupClick(event) {
     const button = event.target.closest("[data-setup-action]");
-    if (!button || !isSetupActive(state) || onlineSession.isOnlineMode()) return;
+    if (!button || !isSetupActive(state)) return;
+    const player = getEditableSetupPlayer();
+    if (!canEditSetupPlayer(player)) return;
 
     try {
       const action = button.dataset.setupAction;
       const pieceId = button.dataset.pieceId;
-      if (action === "add-piece") addSetupPiece(state, pieceId);
-      if (action === "remove-piece") removeSetupPiece(state, pieceId);
-      if (action === "select-fixed-pack") selectFixedPack(state, button.dataset.packId);
-      if (action === "generate-random-packs") generateRandomPacks(state);
-      if (action === "select-random-pack") selectGeneratedPack(state, button.dataset.packId);
-      if (action === "select-placement-piece") {
+      let changed = true;
+      if (action === "add-piece") addSetupPiece(state, pieceId, player);
+      else if (action === "remove-piece") removeSetupPiece(state, pieceId, player);
+      else if (action === "select-fixed-pack") selectFixedPack(state, button.dataset.packId, player);
+      else if (action === "generate-random-packs") generateRandomPacks(state);
+      else if (action === "select-random-pack") selectGeneratedPack(state, button.dataset.packId, player);
+      else if (action === "select-placement-piece") {
+        changed = false;
         uiState.setupSelectedPieceId = pieceId;
-        uiState.setupPlacements = getLegalPlacements(state, pieceId, getSetupPlayer(state));
+        uiState.setupPlacements = getLegalPlacements(state, pieceId, player);
       }
-      if (action === "finalize") {
-        finalizeSetupPlayer(state);
+      else if (action === "finalize") {
+        finalizeSetupPlayer(state, player);
         uiState.setupSelectedPieceId = null;
         uiState.setupPlacements = [];
         if (!isSetupActive(state) && state.clock?.config?.enabled) startClock(state.clock, state.turn);
       }
+      if (changed && onlineSession.isConnected()) sendOnlineMessage(createSetupMessage(state, action, player));
       renderAll();
     } catch (error) {
       window.alert(error instanceof Error ? error.message : String(error));
@@ -1005,12 +1060,14 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   }
 
   function handleSetupBoardClick(x, y) {
-    if (onlineSession.isOnlineMode() || isReplayMode()) return;
+    if (isReplayMode()) return;
 
     try {
-      const player = getSetupPlayer(state);
+      const player = getEditableSetupPlayer();
+      if (!canEditSetupPlayer(player)) return;
       if (removeSetupPlacementAt(state, x, y, player)) {
         uiState.setupPlacements = uiState.setupSelectedPieceId ? getLegalPlacements(state, uiState.setupSelectedPieceId, player) : [];
+        if (onlineSession.isConnected()) sendOnlineMessage(createSetupMessage(state, "removePlacement", player));
         renderAll();
         return;
       }
@@ -1023,6 +1080,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
       const placement = { kind: "placement", player, pieceId: uiState.setupSelectedPieceId, to: { x, y } };
       applyPlacement(state, placement);
+      if (onlineSession.isConnected()) sendOnlineMessage(createSetupMessage(state, "placePiece", player));
       uiState.setupPlacements = getLegalPlacements(state, uiState.setupSelectedPieceId, player);
       if (uiState.setupPlacements.length === 0) uiState.setupSelectedPieceId = null;
       renderAll();
@@ -1030,6 +1088,38 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       window.alert(error instanceof Error ? error.message : String(error));
       renderAll();
     }
+  }
+
+  function chooseMultiMoveFirstMove(x, y) {
+    if (!uiState.multiMoveCompounds.length) return null;
+    const candidates = uiState.multiMoveCompounds.filter(action => action.actions?.[0]?.to?.x === x && action.actions?.[0]?.to?.y === y);
+    return candidates[0]?.actions?.[0] ?? null;
+  }
+
+  function startMultiMovePlan(firstMove) {
+    const secondMoves = uiState.multiMoveCompounds
+      .filter(action => sameFirstAction(action.actions?.[0], firstMove))
+      .map(action => action.actions?.[1])
+      .filter(Boolean);
+    uiState.multiMovePlan = { firstMove, secondMoves };
+    uiState.legalMoves = secondMoves;
+    uiState.specialActions = [{ kind: "multiMoveStop", move: firstMove }];
+    setMessage("2回行動中です。2回目の移動先を盤面で選ぶか、停止してください。");
+    renderAll();
+  }
+
+  function handleMultiMovePlanBoardClick(x, y) {
+    const second = uiState.multiMovePlan.secondMoves.find(move => move.to.x === x && move.to.y === y);
+    if (!second) {
+      clearSelection();
+      renderAll();
+      return;
+    }
+    executeMove({ kind: "compound", actions: [uiState.multiMovePlan.firstMove, second] });
+  }
+
+  function sameFirstAction(a, b) {
+    return Boolean(a && b && a.kind === b.kind && a.from?.x === b.from?.x && a.from?.y === b.from?.y && a.to?.x === b.to?.x && a.to?.y === b.to?.y && (a.promoteTo ?? null) === (b.promoteTo ?? null));
   }
 
   function createIncomingErrorText(result) {

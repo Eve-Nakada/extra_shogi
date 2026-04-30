@@ -57,6 +57,7 @@ export function createTextGameRecord(state) {
   lines.push(`手数：${state.history.length}`);
   lines.push(`結果：${formatResult(state)}`);
   if (meta.notes) lines.push(`備考：${meta.notes}`);
+  appendSetupLogLines(lines, state);
   lines.push("");
   lines.push("手数  指手");
 
@@ -81,6 +82,7 @@ export function createKifLikeGameRecord(state) {
   lines.push(`手合割：平手`);
   lines.push(`先手：${meta.blackName || "先手"}`);
   lines.push(`後手：${meta.whiteName || "後手"}`);
+  appendSetupLogLines(lines, state, "# ");
   lines.push("手数----指手---------消費時間--");
 
   state.history.forEach((entry, index) => {
@@ -177,6 +179,35 @@ function formatJapaneseSquare(square) {
   const files = ["１", "２", "３", "４", "５", "６", "７", "８", "９", "10", "11", "12", "13", "14", "15"];
   const ranks = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二", "十三", "十四", "十五"];
   return `${files[square.x] ?? square.x + 1}${ranks[square.y] ?? square.y + 1}`;
+}
+
+function appendSetupLogLines(lines, state, prefix = "") {
+  const log = state.setup?.setupLog ?? [];
+  if (!log.length) return;
+  lines.push("");
+  lines.push(prefix + "編成履歴:");
+  for (const entry of log) {
+    lines.push(prefix + formatSetupLogEntry(entry, state.ruleset));
+  }
+}
+
+function formatSetupLogEntry(entry, ruleset) {
+  const player = entry.player === "system" ? "共通" : playerName(entry.player);
+  const detail = entry.detail ?? {};
+  if (entry.action === "addPiece") return `${entry.seq}. ${player} ${pieceLabel(ruleset, detail.pieceId)}を追加`;
+  if (entry.action === "removePiece") return `${entry.seq}. ${player} ${pieceLabel(ruleset, detail.pieceId)}を削除`;
+  if (entry.action === "selectFixedPack") return `${entry.seq}. ${player} 固定パック「${detail.packName ?? detail.packId}」を選択`;
+  if (entry.action === "generateRandomPacks") return `${entry.seq}. ${player} ランダムパック生成 seed=${detail.seed ?? "-"}`;
+  if (entry.action === "selectRandomPack") return `${entry.seq}. ${player} ランダムパック「${detail.packName ?? detail.packId}」を選択`;
+  if (entry.action === "placePiece") return `${entry.seq}. ${player} ${pieceLabel(ruleset, detail.pieceId)}を${formatSquare(detail.to ?? { x: 0, y: 0 })}へ配置`;
+  if (entry.action === "removePlacement") return `${entry.seq}. ${player} ${pieceLabel(ruleset, detail.pieceId)}を${formatSquare(detail.from ?? { x: 0, y: 0 })}から除去`;
+  if (entry.action === "finalize") return `${entry.seq}. ${player} 編成確定`;
+  return `${entry.seq}. ${player} ${entry.action}`;
+}
+
+function pieceLabel(ruleset, pieceId) {
+  const pieceDef = ruleset.pieces[pieceId];
+  return pieceDef ? `${pieceDef.display ?? pieceId}(${pieceDef.name ?? pieceId})` : pieceId;
 }
 
 function formatDateTime(value) {

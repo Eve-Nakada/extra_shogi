@@ -2,6 +2,7 @@
 import { applyMove } from "./applyMove.js";
 import { isInCheck } from "./check.js";
 import { createInitialState, cloneMove } from "./state.js";
+import { cloneInitialPositionSnapshot } from "./setup.js";
 
 export const REPETITION_LIMIT = 4;
 
@@ -31,8 +32,9 @@ export function createPositionHash(state) {
   ].join(";");
 }
 
-export function createPositionTimeline(ruleset, history) {
+export function createPositionTimeline(ruleset, history, initialPosition = null) {
   const state = createInitialState(ruleset);
+  if (initialPosition) restoreInitialPositionForTimeline(state, initialPosition);
   const timeline = [createTimelineEntry(state, 0)];
 
   for (const [index, entry] of history.entries()) {
@@ -48,7 +50,7 @@ export function createPositionTimeline(ruleset, history) {
 
 export function detectRepetition(state) {
   const currentHash = createPositionHash(state);
-  const timeline = createPositionTimeline(state.ruleset, state.history);
+  const timeline = createPositionTimeline(state.ruleset, state.history, state.initialPosition ?? state.setup?.initialPosition);
   const matches = timeline.filter(entry => entry.hash === currentHash);
 
   if (matches.length < REPETITION_LIMIT) {
@@ -107,4 +109,17 @@ function formatBases(bases) {
     .map(base => `${base.owner}:${base.kind}:${base.x},${base.y}:${base.layer ?? "ground"}`)
     .sort()
     .join(",");
+}
+
+function restoreInitialPositionForTimeline(state, snapshot) {
+  const initial = cloneInitialPositionSnapshot(snapshot);
+  if (!initial?.board?.squares?.length) return;
+  if (initial.board.width === state.board.width && initial.board.height === state.board.height) {
+    state.board.squares = initial.board.squares.map(piece => piece ? { ...piece } : null);
+  }
+  state.hands = Object.fromEntries(Object.entries(initial.hands ?? state.hands).map(([player, hand]) => [player, { ...hand }]));
+  state.bases = Array.isArray(initial.bases) ? initial.bases.map(base => ({ ...base })) : [];
+  state.phase = "playing";
+  if (state.setup) state.setup.phase = "complete";
+  state.turn = initial.turn ?? state.ruleset.firstTurn ?? state.ruleset.players[0];
 }

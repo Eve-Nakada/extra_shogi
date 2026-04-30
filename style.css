@@ -1967,3 +1967,74 @@ textarea {
     width: 100%;
   }
 }
+
+/* v2.1 selected piece guide and move diagrams */
+.selected-piece-guide {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid #d7c8aa;
+  border-radius: 8px;
+  background: #fffdf7;
+}
+
+.selected-piece-guide h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.move-diagram {
+  width: max-content;
+  display: grid;
+  grid-template-columns: repeat(7, 22px);
+  grid-template-rows: repeat(7, 22px);
+  gap: 1px;
+  margin: 8px 0;
+  padding: 4px;
+  border: 1px solid #d7c8aa;
+  border-radius: 6px;
+  background: #d7c8aa;
+}
+
+.move-diagram-cell {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff8e8;
+  color: #5a3a16;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.move-diagram-cell.origin {
+  background: #f9d990;
+  color: var(--text);
+  border: 1px solid #7b5625;
+}
+
+.move-diagram-cell.step {
+  background: rgb(28 143 58 / 20%);
+  color: #0f6b2d;
+}
+
+.move-diagram-cell.jump {
+  background: rgb(45 108 223 / 18%);
+  color: #1d4fa8;
+}
+
+.move-diagram-cell.slide {
+  background: rgb(180 35 24 / 14%);
+  color: #8c1d13;
+}
+
+.square.setup-placement::after {
+  background: rgb(45 108 223 / 35%);
+}
+
+.special-action-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}

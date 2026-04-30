@@ -44,6 +44,7 @@ export function summarizeMessage(message) {
   const type = message.type ?? "unknown";
   const player = message.player ? ` ${message.player}` : "";
 
+  if (type === "setup") return `編成同期${seq}${player}${message.setupAction ? ` (${message.setupAction})` : ""}`;
   if (type === "move") return `指し手${seq}${player}`;
   if (type === "sync") return `局面同期${message.record?.history ? ` ${message.record.history.length}手` : ""}`;
   if (type === "sync-request") return `局面同期要求${seq}${message.reason ? ` (${message.reason})` : ""}`;

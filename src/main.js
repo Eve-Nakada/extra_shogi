@@ -70,6 +70,7 @@ const elements = {
   connectionDetail: document.getElementById("connection-detail"),
   connectionLog: document.getElementById("connection-log"),
   pieceGuideContent: document.getElementById("piece-guide-content"),
+  selectedPieceGuide: document.getElementById("selected-piece-guide"),
   specialActions: document.getElementById("special-actions"),
   setupPanel: document.getElementById("setup-panel"),
   setupContent: document.getElementById("setup-content")

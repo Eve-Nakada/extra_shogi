@@ -11,6 +11,10 @@ export function createSetupState(ruleset) {
     mode: config.defaultMode ?? "pointBuy",
     currentPlayer: players[0],
     finalizedPlayers: [],
+    setupLog: [],
+    seq: 0,
+    flow: config.flow ?? "sequential",
+    initialPosition: null,
     selectedPieces: Object.fromEntries(players.map(player => [player, {}])),
     placedPieces: Object.fromEntries(players.map(player => [player, {}])),
     generatedPacks: [],
@@ -27,6 +31,10 @@ export function cloneSetup(setup) {
     mode: setup.mode ?? "pointBuy",
     currentPlayer: setup.currentPlayer ?? "black",
     finalizedPlayers: Array.isArray(setup.finalizedPlayers) ? [...setup.finalizedPlayers] : [],
+    setupLog: Array.isArray(setup.setupLog) ? setup.setupLog.map(cloneSetupLogEntry) : [],
+    seq: Number(setup.seq ?? 0),
+    flow: setup.flow ?? "sequential",
+    initialPosition: cloneInitialPositionSnapshot(setup.initialPosition),
     selectedPieces: cloneNestedCounts(setup.selectedPieces),
     placedPieces: cloneNestedCounts(setup.placedPieces),
     generatedPacks: Array.isArray(setup.generatedPacks) ? setup.generatedPacks.map(clonePack) : [],
@@ -86,6 +94,7 @@ export function addSetupPiece(state, pieceId, player = getSetupPlayer(state)) {
   if (nextCost > getSetupBudget(state)) throw new Error("編成点数を超えています。");
 
   selected[pieceId] = nextCount;
+  logSetupEvent(state, player, "addPiece", { pieceId });
   return cloneSetup(state.setup);
 }
 
@@ -99,6 +108,7 @@ export function removeSetupPiece(state, pieceId, player = getSetupPlayer(state))
 
   selected[pieceId] = selectedCount - 1;
   if (selected[pieceId] <= 0) delete selected[pieceId];
+  logSetupEvent(state, player, "removePiece", { pieceId });
   return cloneSetup(state.setup);
 }
 
@@ -109,6 +119,7 @@ export function selectFixedPack(state, packId, player = getSetupPlayer(state)) {
   applyPackToPlayer(state, player, pack);
   state.setup.mode = "fixedPack";
   state.setup.selectedPackIds[player] = pack.id;
+  logSetupEvent(state, player, "selectFixedPack", { packId: pack.id, packName: pack.name, pieces: { ...pack.pieces } });
   return cloneSetup(state.setup);
 }
 
@@ -140,6 +151,7 @@ export function generateRandomPacks(state, seed = createSeed()) {
   state.setup.mode = "randomPack";
   state.setup.randomSeed = seed;
   state.setup.generatedPacks = packs;
+  logSetupEvent(state, "system", "generateRandomPacks", { seed, packs: packs.map(clonePack) });
   return packs.map(clonePack);
 }
 
@@ -150,6 +162,7 @@ export function selectGeneratedPack(state, packId, player = getSetupPlayer(state
   applyPackToPlayer(state, player, pack);
   state.setup.mode = "randomPack";
   state.setup.selectedPackIds[player] = pack.id;
+  logSetupEvent(state, player, "selectRandomPack", { packId: pack.id, packName: pack.name, pieces: { ...pack.pieces } });
   return cloneSetup(state.setup);
 }
 
@@ -185,7 +198,7 @@ export function getLegalPlacements(state, pieceId, player = getSetupPlayer(state
 export function applyPlacement(state, placement) {
   assertSetupActiveState(state);
   const player = placement.player ?? getSetupPlayer(state);
-  if (player !== getSetupPlayer(state)) throw new Error("現在の編成プレイヤーではありません。");
+  assertSetupSelectionMutable(state, player);
   if (!getLegalPlacements(state, placement.pieceId, player).some(candidate => candidate.to.x === placement.to.x && candidate.to.y === placement.to.y)) {
     throw new Error("そのマスには配置できません。");
   }
@@ -193,6 +206,7 @@ export function applyPlacement(state, placement) {
   setSquare(state, placement.to.x, placement.to.y, { owner: player, id: placement.pieceId });
   const placed = state.setup.placedPieces[player];
   placed[placement.pieceId] = (placed[placement.pieceId] ?? 0) + 1;
+  logSetupEvent(state, player, "placePiece", { pieceId: placement.pieceId, to: { ...placement.to } });
   return cloneSetup(state.setup);
 }
 
@@ -204,6 +218,7 @@ export function removeSetupPlacementAt(state, x, y, player = getSetupPlayer(stat
   const placed = state.setup.placedPieces[player];
   placed[piece.id] = Math.max(0, (placed[piece.id] ?? 0) - 1);
   if (placed[piece.id] <= 0) delete placed[piece.id];
+  logSetupEvent(state, player, "removePlacement", { pieceId: piece.id, from: { x, y } });
   return true;
 }
 
@@ -217,10 +232,11 @@ export function canFinalizeSetupPlayer(state, player = getSetupPlayer(state)) {
 
 export function finalizeSetupPlayer(state, player = getSetupPlayer(state)) {
   assertSetupActiveState(state);
-  if (player !== getSetupPlayer(state)) throw new Error("現在の編成プレイヤーではありません。");
+  assertSetupSelectionMutable(state, player);
   if (!canFinalizeSetupPlayer(state, player)) throw new Error("未配置の駒があるか、王が選ばれていません。");
 
   if (!state.setup.finalizedPlayers.includes(player)) state.setup.finalizedPlayers.push(player);
+  logSetupEvent(state, player, "finalize", { selectedPieces: { ...(state.setup.selectedPieces[player] ?? {}) } });
   const next = state.ruleset.players.find(candidate => !state.setup.finalizedPlayers.includes(candidate));
   if (next) {
     state.setup.currentPlayer = next;
@@ -232,6 +248,8 @@ export function finalizeSetupPlayer(state, player = getSetupPlayer(state)) {
   state.phase = "playing";
   state.turn = state.ruleset.firstTurn ?? state.ruleset.players[0];
   state.status = { type: "playing", winner: null, reason: null };
+  state.initialPosition = createInitialPositionSnapshot(state);
+  state.setup.initialPosition = cloneInitialPositionSnapshot(state.initialPosition);
   return cloneSetup(state.setup);
 }
 
@@ -274,8 +292,59 @@ function assertSetupActiveState(state) {
 
 function assertSetupSelectionMutable(state, player) {
   assertSetupActiveState(state);
-  if (player !== getSetupPlayer(state)) throw new Error("現在の編成プレイヤーではありません。");
+  if (!state.ruleset.players.includes(player)) throw new Error("未知の編成プレイヤーです。");
+  if ((state.setup.flow ?? "sequential") !== "simultaneous" && player !== getSetupPlayer(state)) throw new Error("現在の編成プレイヤーではありません。");
   if (state.setup.finalizedPlayers.includes(player)) throw new Error("このプレイヤーの編成は確定済みです。");
+}
+
+export function createInitialPositionSnapshot(state) {
+  return {
+    board: {
+      width: state.board.width,
+      height: state.board.height,
+      squares: state.board.squares.map(piece => piece ? { ...piece } : null)
+    },
+    hands: Object.fromEntries(Object.entries(state.hands ?? {}).map(([player, hand]) => [player, { ...hand }])),
+    bases: (state.bases ?? []).map(base => ({ ...base })),
+    turn: state.ruleset.firstTurn ?? state.ruleset.players[0]
+  };
+}
+
+export function cloneInitialPositionSnapshot(snapshot) {
+  if (!snapshot) return null;
+  return {
+    board: snapshot.board ? {
+      width: snapshot.board.width,
+      height: snapshot.board.height,
+      squares: Array.isArray(snapshot.board.squares) ? snapshot.board.squares.map(piece => piece ? { ...piece } : null) : []
+    } : null,
+    hands: Object.fromEntries(Object.entries(snapshot.hands ?? {}).map(([player, hand]) => [player, { ...hand }])),
+    bases: Array.isArray(snapshot.bases) ? snapshot.bases.map(base => ({ ...base })) : [],
+    turn: snapshot.turn ?? null
+  };
+}
+
+function logSetupEvent(state, player, action, detail = {}) {
+  if (!state.setup) return;
+  state.setup.seq = Number(state.setup.seq ?? 0) + 1;
+  if (!Array.isArray(state.setup.setupLog)) state.setup.setupLog = [];
+  state.setup.setupLog.push({
+    seq: state.setup.seq,
+    at: new Date().toISOString(),
+    player,
+    action,
+    detail: JSON.parse(JSON.stringify(detail ?? {}))
+  });
+}
+
+function cloneSetupLogEntry(entry) {
+  return {
+    seq: Number(entry.seq ?? 0),
+    at: entry.at ?? null,
+    player: entry.player ?? null,
+    action: entry.action ?? "unknown",
+    detail: JSON.parse(JSON.stringify(entry.detail ?? {}))
+  };
 }
 
 function cloneNestedCounts(value = {}) {
