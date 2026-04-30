@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>盤上ゲーム - 将棋HTML v2.2</title>
+  <title>盤上ゲーム - 将棋HTML v2.3</title>
   <meta name="description" content="HTML/CSS/JavaScriptだけで動作する、ローカル対局・棋譜保存・軽量通信対戦対応の将棋系盤上ゲームです。">
   <link rel="stylesheet" href="./style.css">
 </head>
@@ -11,13 +11,14 @@
   <main id="app" class="app">
     <header class="app-header compact-header">
       <div>
-        <p class="version-badge">v2.2 編成UI改善・追加駒</p>
+        <p class="version-badge">v2.3 NPC対戦・対象選択UI</p>
         <h1>盤上ゲーム - 将棋HTML</h1>
-        <p class="note">駒定義メタ情報・属性・捕獲制限・変身・範囲効果・追加行動・拠点・編成/パック選択・編成通信同期・編成UI改善・追加駒 / ローカル対局・棋譜保存・軽量通信対戦対応</p>
+        <p class="note">駒定義メタ情報・属性・捕獲制限・変身・範囲効果・追加行動・拠点・編成/パック選択・編成通信同期・編成UI改善・追加駒・NPC対戦 / ローカル対局・棋譜保存・軽量通信対戦対応</p>
       </div>
       <nav class="quick-nav" aria-label="画面内ナビゲーション">
         <a href="#board">盤面</a>
         <a href="#settings-panel">設定</a>
+        <a href="#npc-panel">NPC</a>
         <a href="#online-help">通信</a>
         <a href="#record-help">保存・棋譜</a>
         <a href="#setup-panel">編成</a>
@@ -73,6 +74,23 @@
       </div>
       <p class="view-options-note">表示設定はこのブラウザのlocalStorageに保存され、次回起動時に復元されます。盤面視点を切り替えると駒台の上下配置も連動します。</p>
     </section>
+
+
+    <details id="npc-panel" class="npc-panel compact-panel">
+      <summary>NPC対戦</summary>
+      <div class="npc-controls">
+        <label class="field-label" for="npc-player-select">
+          NPC担当
+          <select id="npc-player-select" class="ruleset-select">
+            <option value="none">NPCなし</option>
+            <option value="white">後手をNPCにする</option>
+            <option value="black">先手をNPCにする</option>
+            <option value="both">両者NPC（観戦）</option>
+          </select>
+        </label>
+        <p class="npc-note">ローカル対局専用です。通信対戦・編成フェーズ・棋譜再生中はNPCは動きません。現在は合法アクションから簡易評価で手を選びます。</p>
+      </div>
+    </details>
 
     <details id="setup-panel" class="setup-panel compact-panel" open>
       <summary>編成・パック選択</summary>

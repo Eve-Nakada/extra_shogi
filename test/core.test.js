@@ -959,3 +959,27 @@ test("v2.2 新駒検証パックは点数内で選択できる", () => {
   assert.deepEqual(state.setup.selectedPieces.black, { K: 1, FG: 1, LH: 1, HB: 1, SC: 2, SH: 2 });
   assert.equal(getSelectedSetupCost(state, "black") <= getSetupBudget(state), true);
 });
+
+import { chooseNpcAction, getAllLegalActionsForPlayer } from "../src/core/npc.js";
+
+test("v2.3 NPCは合法アクションを選択できる", () => {
+  const state = createInitialState(STANDARD_SHOGI);
+  const action = chooseNpcAction(state, "black");
+  const legal = getAllLegalActionsForPlayer(state, "black");
+
+  assert.ok(action);
+  assert.equal(legal.some(candidate => JSON.stringify(candidate) === JSON.stringify(action)), true);
+});
+
+test("v2.3 NPCは取れる駒がある場合に捕獲を優先する", () => {
+  const state = createEmptyState();
+  put(state, "black", "K", 4, 8);
+  put(state, "white", "K", 4, 0);
+  put(state, "black", "R", 4, 4);
+  put(state, "white", "B", 4, 2);
+
+  const action = chooseNpcAction(state, "black");
+
+  assert.equal(action.kind, "move");
+  assert.deepEqual(action.to, { x: 4, y: 2 });
+});

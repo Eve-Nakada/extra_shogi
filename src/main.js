@@ -73,7 +73,8 @@ const elements = {
   selectedPieceGuide: document.getElementById("selected-piece-guide"),
   specialActions: document.getElementById("special-actions"),
   setupPanel: document.getElementById("setup-panel"),
-  setupContent: document.getElementById("setup-content")
+  setupContent: document.getElementById("setup-content"),
+  npcPlayerSelect: document.getElementById("npc-player-select")
 };
 
 for (const [name, element] of Object.entries(elements)) {
