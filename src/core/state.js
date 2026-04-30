@@ -1,5 +1,6 @@
 import { setSquare } from "./coordinates.js";
 import { cloneClock } from "./clock.js";
+import { createDefaultMeta, cloneGameMeta } from "./meta.js";
 
 export function createInitialState(ruleset) {
   const width = ruleset.board.width;
@@ -21,7 +22,8 @@ export function createInitialState(ruleset) {
       winner: null,
       reason: null
     },
-    clock: null
+    clock: null,
+    meta: createDefaultMeta()
   };
 
   for (const item of ruleset.initialPieces) {
@@ -55,7 +57,8 @@ export function cloneState(state) {
     hands: cloneHands(state.hands),
     history: state.history.map(cloneHistoryEntry),
     status: { ...state.status },
-    clock: cloneClock(state.clock)
+    clock: cloneClock(state.clock),
+    meta: cloneGameMeta(state.meta)
   };
 }
 

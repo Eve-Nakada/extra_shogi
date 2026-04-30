@@ -3,6 +3,7 @@ import { cloneMove } from "./state.js";
 import { cloneClock } from "./clock.js";
 import { createPositionHash, detectRepetition } from "./repetition.js";
 import { evaluateImpasse } from "./impasse.js";
+import { cloneGameMeta } from "./meta.js";
 
 const CURRENT_RECORD_VERSION = 1;
 
@@ -11,6 +12,7 @@ export function createGameRecord(state) {
     app: "shogi-html",
     version: CURRENT_RECORD_VERSION,
     savedAt: new Date().toISOString(),
+    meta: cloneGameMeta(state.meta),
     rulesetId: state.rulesetId,
     turn: state.turn,
     status: cloneStatus(state.status),
@@ -61,6 +63,7 @@ export function restoreGameRecord(record, rulesetsById) {
     reason: null
   };
   state.clock = cloneClock(record.clock);
+  state.meta = cloneGameMeta(record.meta);
 
   return state;
 }
