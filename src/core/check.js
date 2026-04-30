@@ -1,5 +1,6 @@
 import { canCapture } from "./capture.js";
 import { fromIndex, getSquare, inBoard } from "./coordinates.js";
+import { hasBaseAt } from "./base.js";
 import { resolveDelta } from "./moveGenerator.js";
 
 export function findRoyal(state, player) {
@@ -73,7 +74,7 @@ export function pieceAttacksSquare(state, piece, from, target) {
           return true;
         }
 
-        if (getSquare(state, x, y)) {
+        if (getSquare(state, x, y) || hasBaseAt(state, x, y)) {
           break;
         }
 

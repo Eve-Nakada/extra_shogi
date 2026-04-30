@@ -19,6 +19,8 @@ const COPPER_MOVES = [
   { kind: "step", dx: 0, fy: -1 }
 ];
 
+const BUILDER_MOVES = GOLD_MOVES;
+
 const SOLDIER_MOVES = [
   { kind: "step", dx: 0, fy: 1 },
   { kind: "step", dx: -1, fy: 0 },
@@ -64,6 +66,7 @@ function createExpandedInitialPieces() {
     { owner: "white", id: "W", x: 0, y: 2 },
     { owner: "white", id: "Q", x: 2, y: 2 },
     { owner: "white", id: "D", x: 3, y: 2 },
+    { owner: "white", id: "T", x: 4, y: 2 },
     { owner: "white", id: "F", x: 5, y: 2 },
     { owner: "white", id: "U", x: 6, y: 2 },
     { owner: "white", id: "X", x: 8, y: 2 },
@@ -72,6 +75,7 @@ function createExpandedInitialPieces() {
     { owner: "black", id: "W", x: 0, y: 8 },
     { owner: "black", id: "Q", x: 2, y: 8 },
     { owner: "black", id: "D", x: 3, y: 8 },
+    { owner: "black", id: "T", x: 4, y: 8 },
     { owner: "black", id: "F", x: 5, y: 8 },
     { owner: "black", id: "U", x: 6, y: 8 },
     { owner: "black", id: "X", x: 8, y: 8 },
@@ -111,7 +115,36 @@ export const EXPANDED_SHOGI = {
     height: 11
   },
 
-  handOrder: ["R", "B", "M", "F", "U", "Q", "D", "X", "Y", "Z", "A", "C", "W", "G", "S", "N", "L", "P"],
+  handOrder: ["R", "B", "M", "F", "U", "Q", "D", "T", "X", "Y", "Z", "A", "C", "W", "G", "S", "N", "L", "P"],
+
+  drops: {
+    enabled: true,
+    capturedPiecesBecomeHand: true,
+    policy: "nearOwnBase",
+    baseKinds: ["castle", "carrier"],
+    radius: 1,
+    allowInitialCampIfNoBase: true,
+    allowDropInPromotionZone: true
+  },
+
+  baseDefs: {
+    castle: {
+      name: "御城",
+      display: "城",
+      providesDropZone: true,
+      dropRadius: 1,
+      allowedLayers: ["ground"]
+    },
+    carrier: {
+      name: "空母",
+      display: "母",
+      providesDropZone: true,
+      dropRadius: 1,
+      allowedLayers: ["ground"],
+      futureAllowedLayers: ["air"],
+      enablesLayerTransfer: false
+    }
+  },
 
   pieces: {
     ...STANDARD_SHOGI.pieces,
@@ -207,6 +240,22 @@ export const EXPANDED_SHOGI = {
       droppable: false,
       capturedAs: "A",
       moves: GOLD_MOVES
+    },
+
+
+    T: {
+      name: "築城駒",
+      display: "築",
+      description: "周囲1マスの空きマスに御城を建てられる拠点建設系の駒。",
+      category: "baseBuilder",
+      point: 4,
+      attributes: ["baseBuilder"],
+      actions: [
+        { kind: "buildBase", baseType: "castle", range: 1, buildOn: "emptySquare" }
+      ],
+      droppable: true,
+      capturedAs: "T",
+      moves: BUILDER_MOVES
     },
 
     X: {

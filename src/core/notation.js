@@ -29,6 +29,11 @@ export function formatHistoryEntry(entry, ruleset, index = null) {
     return `${prefix}${turn} 効果 ${formatSquare(entry.move.source)} ${formatSquare(entry.move.target)}→${promotedDef?.display ?? entry.move.promoteTo}`;
   }
 
+  if (entry.move.kind === "buildBase") {
+    const baseDef = ruleset.baseDefs?.[entry.move.baseType] ?? ruleset.bases?.[entry.move.baseType];
+    return `${prefix}${turn} ${baseDef?.display ?? entry.move.baseType}建設 ${formatSquare(entry.move.to)}`;
+  }
+
   if (entry.move.kind === "compound") {
     const parts = (entry.subEntries ?? []).map(subEntry => formatHistoryEntry({ ...subEntry, turn: entry.turn }, ruleset)).join(" / ");
     return `${prefix}${turn} 複合 ${parts || `${entry.move.actions.length}アクション`}`;
@@ -118,6 +123,11 @@ function formatHistoryEntryForText(entry, ruleset, meta) {
     return `${player} ${formatSquare(entry.move.source)} 効果 ${formatSquare(entry.move.target)} ${promotedDef?.display ?? entry.move.promoteTo}`;
   }
 
+  if (entry.move.kind === "buildBase") {
+    const baseDef = ruleset.baseDefs?.[entry.move.baseType] ?? ruleset.bases?.[entry.move.baseType];
+    return `${player} ${formatSquare(entry.move.to)} ${baseDef?.display ?? entry.move.baseType}建設`;
+  }
+
   if (entry.move.kind === "compound") {
     const parts = (entry.subEntries ?? []).map(subEntry => formatHistoryEntryForText({ ...subEntry, turn: entry.turn }, ruleset, meta));
     return `${player} 複合 ${parts.join(" / ")}`;
@@ -148,6 +158,11 @@ function formatKifLikeMove(entry, ruleset) {
   if (entry.move.kind === "triggerEffect") {
     const promotedDef = ruleset.pieces[entry.move.promoteTo];
     return `${formatJapaneseSquare(entry.move.target)}${promotedDef?.display ?? entry.move.promoteTo}効成`;
+  }
+
+  if (entry.move.kind === "buildBase") {
+    const baseDef = ruleset.baseDefs?.[entry.move.baseType] ?? ruleset.bases?.[entry.move.baseType];
+    return `${formatJapaneseSquare(entry.move.to)}${baseDef?.display ?? entry.move.baseType}建`;
   }
 
   if (entry.move.kind === "compound") {

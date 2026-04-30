@@ -14,6 +14,8 @@ export function createPositionHash(state) {
     .map(player => `${player}:${formatHand(state.hands[player] ?? {})}`)
     .join("|");
 
+  const basePart = formatBases(state.bases ?? []);
+
   const turnStatePart = state.turnState?.phase === "extraAction"
     ? `extra:${state.turnState.forcedPiece?.x},${state.turnState.forcedPiece?.y}:${state.turnState.remainingActions}`
     : "normal";
@@ -23,7 +25,8 @@ export function createPositionHash(state) {
     `turn=${state.turn}`,
     `turnState=${turnStatePart}`,
     `board=${boardPart}`,
-    `hands=${handPart}`
+    `hands=${handPart}`,
+    `bases=${basePart}`
   ].join(";");
 }
 
@@ -97,3 +100,10 @@ function formatHand(hand) {
 }
  
  
+
+function formatBases(bases) {
+  return bases
+    .map(base => `${base.owner}:${base.kind}:${base.x},${base.y}:${base.layer ?? "ground"}`)
+    .sort()
+    .join(",");
+}

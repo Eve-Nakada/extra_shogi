@@ -63,6 +63,13 @@ export const STANDARD_SHOGI = {
     depth: 3
   },
 
+  drops: {
+    enabled: true,
+    capturedPiecesBecomeHand: true,
+    policy: "anywhere",
+    allowDropInPromotionZone: true
+  },
+
   handOrder: ["R", "B", "G", "S", "N", "L", "P"],
 
   pieces: {

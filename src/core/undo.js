@@ -1,5 +1,6 @@
 import { getSquare, setSquare } from "./coordinates.js";
 import { cloneTurnState, createDefaultTurnState } from "./state.js";
+import { removeBaseById } from "./base.js";
 
 export function undoLastMove(state) {
   const entry = state.history.pop();
@@ -35,6 +36,11 @@ export function undoLastMove(state) {
 
   if (entry.move.kind === "compound") {
     undoCompoundAction(state, entry);
+    return true;
+  }
+
+  if (entry.move.kind === "buildBase") {
+    undoBuildBaseAction(state, entry);
     return true;
   }
 
@@ -114,6 +120,16 @@ function undoCompoundAction(state, entry) {
       undoTransformAction(state, subEntry);
     } else if (subEntry.move.kind === "triggerEffect") {
       undoTriggerEffectAction(state, subEntry);
+    } else if (subEntry.move.kind === "buildBase") {
+      undoBuildBaseAction(state, subEntry);
     }
   }
+}
+
+function undoBuildBaseAction(state, entry) {
+  if (entry.builtBase?.id && removeBaseById(state, entry.builtBase.id)) return;
+  const move = entry.move;
+  if (!Array.isArray(state.bases)) return;
+  const index = state.bases.findIndex(base => base.x === move.to.x && base.y === move.to.y && base.owner === entry.turn && base.kind === move.baseType);
+  if (index >= 0) state.bases.splice(index, 1);
 }

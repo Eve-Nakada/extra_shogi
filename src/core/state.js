@@ -1,5 +1,6 @@
 import { setSquare } from "./coordinates.js";
 import { cloneClock } from "./clock.js";
+import { cloneBases } from "./base.js";
 import { createDefaultMeta, cloneGameMeta } from "./meta.js";
 
 export function createInitialState(ruleset) {
@@ -16,6 +17,7 @@ export function createInitialState(ruleset) {
     },
     turn: ruleset.firstTurn ?? ruleset.players[0],
     hands: createEmptyHands(ruleset),
+    bases: cloneBases(ruleset.initialBases ?? []),
     history: [],
     status: {
       type: "playing",
@@ -56,6 +58,7 @@ export function cloneState(state) {
     },
     turn: state.turn,
     hands: cloneHands(state.hands),
+    bases: cloneBases(state.bases),
     history: state.history.map(cloneHistoryEntry),
     status: { ...state.status },
     clock: cloneClock(state.clock),
@@ -72,6 +75,7 @@ export function cloneHistoryEntry(entry) {
     pieceBefore: entry.pieceBefore ? { ...entry.pieceBefore } : null,
     pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null,
     subEntries: Array.isArray(entry.subEntries) ? entry.subEntries.map(cloneHistoryEntry) : undefined,
+    builtBase: entry.builtBase ? { ...entry.builtBase } : null,
     turnStateBefore: cloneTurnState(entry.turnStateBefore),
     turnStateAfter: cloneTurnState(entry.turnStateAfter)
   };
@@ -117,6 +121,16 @@ export function cloneMove(move) {
     return {
       kind: "compound",
       actions: move.actions.map(cloneMove)
+    };
+  }
+
+  if (move.kind === "buildBase") {
+    return {
+      kind: "buildBase",
+      actor: { ...move.actor },
+      baseType: move.baseType,
+      to: { ...move.to },
+      id: move.id ?? null
     };
   }
 

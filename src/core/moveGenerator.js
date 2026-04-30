@@ -1,5 +1,6 @@
 import { canCapture } from "./capture.js";
 import { getSquare, inBoard } from "./coordinates.js";
+import { hasBaseAt } from "./base.js";
 
 export function generatePseudoMoves(state, selection) {
   if (state.status.type !== "playing") return [];
@@ -32,6 +33,7 @@ export function generateBoardPseudoMoves(state, x, y) {
       let toY = y + delta.dy;
 
       while (inBoard(toX, toY, state.board)) {
+        if (hasBaseAt(state, toX, toY)) break;
         const target = getSquare(state, toX, toY);
         if (target?.owner === piece.owner) break;
 
@@ -55,6 +57,7 @@ export function generateBoardPseudoMoves(state, x, y) {
       const toY = y + delta.dy;
       if (!inBoard(toX, toY, state.board)) continue;
 
+      if (hasBaseAt(state, toX, toY)) continue;
       const target = getSquare(state, toX, toY);
       if (target?.owner === piece.owner) continue;
       if (target && !canCapture(state, piece, target, {
@@ -79,7 +82,7 @@ export function generateDropPseudoMoves(state, selection) {
   const moves = [];
   for (let y = 0; y < state.board.height; y += 1) {
     for (let x = 0; x < state.board.width; x += 1) {
-      if (!getSquare(state, x, y)) {
+      if (!getSquare(state, x, y) && !hasBaseAt(state, x, y)) {
         moves.push({
           kind: "drop",
           pieceId: selection.pieceId,
