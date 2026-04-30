@@ -25,7 +25,7 @@ export const SETUP_SHOGI = {
     allowDropInPromotionZone: true
   },
 
-  handOrder: ["R", "B", "M", "F", "FG", "U", "Q", "D", "T", "X", "LH", "HB", "SC", "SH", "A", "C", "W", "G", "S", "N", "L", "P"],
+  handOrder: ["R", "B", "M", "F", "FG", "IW", "U", "DR", "EG", "SRM", "NIN", "RG", "SB", "XS", "DS", "SP", "Q", "D", "T", "X", "LH", "HB", "SC", "SH", "A", "C", "W", "G", "S", "N", "L", "P"],
 
   setup: {
     enabled: true,
@@ -33,7 +33,7 @@ export const SETUP_SHOGI = {
     flow: "simultaneous",
     budget: 18,
     requireRoyal: true,
-    allowedPieces: ["K", "R", "B", "M", "F", "FG", "U", "Q", "D", "T", "X", "LH", "HB", "SC", "SH", "A", "C", "W", "G", "S", "N", "L", "P"],
+    allowedPieces: ["K", "R", "B", "M", "F", "FG", "IW", "U", "DR", "EG", "SRM", "NIN", "RG", "SB", "XS", "DS", "SP", "Q", "D", "T", "X", "LH", "HB", "SC", "SH", "A", "C", "W", "G", "S", "N", "L", "P"],
     placementZones: {
       black: { yMin: 5, yMax: 6 },
       white: { yMin: 0, yMax: 1 }
@@ -61,6 +61,16 @@ export const SETUP_SHOGI = {
       HB: 3,
       FG: 1,
       LH: 2,
+      SP: 3,
+      DS: 4,
+      RG: 2,
+      SB: 2,
+      XS: 4,
+      EG: 1,
+      SRM: 1,
+      IW: 1,
+      NIN: 2,
+      DR: 1,
       P: 7,
       default: 4
     },
@@ -84,6 +94,16 @@ export const SETUP_SHOGI = {
         id: "new-units",
         name: "新駒検証パック",
         pieces: { K: 1, FG: 1, LH: 1, HB: 1, SC: 2, SH: 2 }
+      },
+      {
+        id: "base-assault",
+        name: "拠点攻防パック",
+        pieces: { K: 1, EG: 1, SRM: 1, IW: 1, SP: 1, XS: 2 }
+      },
+      {
+        id: "v24-new-units",
+        name: "v2.4新駒パック",
+        pieces: { K: 1, NIN: 1, DR: 1, RG: 1, SB: 1, DS: 2, XS: 1 }
       }
     ],
     randomPack: {
@@ -92,6 +112,16 @@ export const SETUP_SHOGI = {
       budget: 18,
       pool: [
         { pieceId: "P", weight: 10 },
+        { pieceId: "XS", weight: 5 },
+        { pieceId: "DS", weight: 4 },
+        { pieceId: "SP", weight: 3 },
+        { pieceId: "RG", weight: 3 },
+        { pieceId: "SB", weight: 3 },
+        { pieceId: "NIN", weight: 2 },
+        { pieceId: "DR", weight: 2 },
+        { pieceId: "EG", weight: 1 },
+        { pieceId: "SRM", weight: 1 },
+        { pieceId: "IW", weight: 1 },
         { pieceId: "A", weight: 5 },
         { pieceId: "C", weight: 5 },
         { pieceId: "W", weight: 4 },

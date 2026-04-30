@@ -983,3 +983,75 @@ test("v2.3 NPCは取れる駒がある場合に捕獲を優先する", () => {
   assert.equal(action.kind, "move");
   assert.deepEqual(action.to, { x: 4, y: 2 });
 });
+
+import { findBaseAt } from "../src/core/base.js";
+
+test("v2.4 拠点はHPを持ち、破城槌のattackBaseで占領できる", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  put(state, "black", "SRM", 4, 5);
+  state.bases = [{
+    id: "white-castle-test",
+    owner: "white",
+    kind: "castle",
+    x: 4,
+    y: 4,
+    layer: "ground",
+    hp: 2,
+    maxHp: 3,
+    providesDropZone: true,
+    dropRadius: 1,
+    captureMode: "occupy"
+  }];
+
+  const attack = getLegalActions(state, { kind: "board", x: 4, y: 5 }).find(action => action.kind === "attackBase");
+  assert.ok(attack);
+  applyAction(state, attack);
+
+  const base = findBaseAt(state, 4, 4);
+  assert.equal(base.owner, "black");
+  assert.equal(base.hp, 3);
+  assert.equal(state.history.at(-1).baseOutcome, "occupied");
+});
+
+test("v2.4 空母は拠点ごとの駒打ち範囲差を持ち、破壊対象にもできる", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  put(state, "black", "SRM", 5, 5);
+  state.bases = [{
+    id: "white-carrier-test",
+    owner: "white",
+    kind: "carrier",
+    x: 5,
+    y: 4,
+    layer: "ground",
+    hp: 2,
+    maxHp: 2,
+    providesDropZone: true,
+    dropRadius: 2,
+    captureMode: "destroy",
+    preparedForAirLayer: true
+  }];
+
+  const attack = getLegalActions(state, { kind: "board", x: 5, y: 5 }).find(action => action.kind === "attackBase");
+  assert.ok(attack);
+  applyAction(state, attack);
+
+  assert.equal(findBaseAt(state, 5, 4), null);
+  assert.equal(state.history.at(-1).baseOutcome, "destroyed");
+  assert.equal(EXPANDED_SHOGI.baseDefs.carrier.dropRadius, 2);
+  assert.equal(EXPANDED_SHOGI.baseDefs.carrier.preparedForAirLayer, true);
+});
+
+test("v2.4 追加駒は拡張ルールセットと編成対象に定義される", () => {
+  for (const pieceId of ["SP", "DS", "RG", "SB", "XS", "EG", "SRM", "IW", "NIN", "DR"]) {
+    assert.ok(EXPANDED_SHOGI.pieces[pieceId], `${pieceId} should exist`);
+    assert.equal(SETUP_SHOGI.setup.allowedPieces.includes(pieceId), true);
+  }
+
+  assert.equal(EXPANDED_SHOGI.pieces.EG.actions.some(action => action.kind === "buildBase" && action.baseType === "carrier"), true);
+  assert.equal(EXPANDED_SHOGI.pieces.SRM.actions.some(action => action.kind === "attackBase"), true);
+  assert.equal(EXPANDED_SHOGI.pieces.IW.captureRules[0].kind, "requiresAttackerAttribute");
+});

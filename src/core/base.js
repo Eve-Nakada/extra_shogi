@@ -4,19 +4,24 @@ export const DEFAULT_BASE_DEFS = {
   castle: {
     name: "御城",
     display: "城",
+    hp: 3,
     providesDropZone: true,
     dropRadius: 1,
+    captureMode: "occupy",
     allowedLayers: ["ground"]
   },
 
   carrier: {
     name: "空母",
     display: "母",
+    hp: 2,
     providesDropZone: true,
-    dropRadius: 1,
+    dropRadius: 2,
+    captureMode: "destroy",
     allowedLayers: ["ground"],
     futureAllowedLayers: ["air"],
-    enablesLayerTransfer: false
+    enablesLayerTransfer: false,
+    preparedForAirLayer: true
   }
 };
 
@@ -39,8 +44,11 @@ export function cloneBase(base) {
     y: base.y,
     layer: base.layer ?? "ground",
     hp: base.hp ?? null,
+    maxHp: base.maxHp ?? base.hp ?? null,
     providesDropZone: base.providesDropZone !== false,
-    dropRadius: Number(base.dropRadius ?? 1)
+    dropRadius: Number(base.dropRadius ?? 1),
+    captureMode: base.captureMode ?? null,
+    preparedForAirLayer: Boolean(base.preparedForAirLayer)
   };
 }
 
@@ -62,8 +70,11 @@ export function createBaseFromAction(state, owner, action) {
     y: action.to.y,
     layer: action.to.layer ?? "ground",
     hp: baseDef.hp ?? null,
+    maxHp: baseDef.hp ?? null,
     providesDropZone: baseDef.providesDropZone !== false,
-    dropRadius: Number(baseDef.dropRadius ?? 1)
+    dropRadius: Number(baseDef.dropRadius ?? 1),
+    captureMode: baseDef.captureMode ?? null,
+    preparedForAirLayer: Boolean(baseDef.preparedForAirLayer)
   };
 }
 
@@ -132,4 +143,52 @@ export function isOwnCamp(state, player, square) {
   return player === "black"
     ? square.y >= state.board.height - depth
     : square.y < depth;
+}
+
+export function getBaseMaxHp(state, base) {
+  const baseDef = getBaseDef(state, base.kind);
+  return Number(base.maxHp ?? baseDef?.hp ?? base.hp ?? 1);
+}
+
+export function getBaseCaptureMode(state, base) {
+  const baseDef = getBaseDef(state, base.kind);
+  return base.captureMode ?? baseDef?.captureMode ?? "destroy";
+}
+
+export function damageBase(state, baseId, attacker, damage = 1) {
+  if (!Array.isArray(state.bases)) state.bases = [];
+  const index = state.bases.findIndex(base => base.id === baseId);
+  if (index === -1) throw new Error("攻撃対象の拠点が見つかりません。");
+
+  const before = cloneBase(state.bases[index]);
+  const actualDamage = Math.max(1, Number(damage ?? 1));
+  const currentHp = Number(state.bases[index].hp ?? getBaseMaxHp(state, state.bases[index]));
+  state.bases[index].hp = currentHp - actualDamage;
+
+  let outcome = "damaged";
+  if (state.bases[index].hp <= 0) {
+    const mode = getBaseCaptureMode(state, state.bases[index]);
+    if (mode === "occupy") {
+      state.bases[index].owner = attacker;
+      state.bases[index].hp = getBaseMaxHp(state, state.bases[index]);
+      outcome = "occupied";
+    } else {
+      state.bases.splice(index, 1);
+      outcome = "destroyed";
+    }
+  }
+
+  const after = outcome === "destroyed" ? null : cloneBase(state.bases.find(base => base.id === baseId));
+  return { before, after, outcome, damage: actualDamage };
+}
+
+export function restoreBaseSnapshot(state, before) {
+  if (!Array.isArray(state.bases)) state.bases = [];
+  if (!before?.id) return;
+  const index = state.bases.findIndex(base => base.id === before.id);
+  if (index >= 0) {
+    state.bases[index] = cloneBase(before);
+  } else {
+    state.bases.push(cloneBase(before));
+  }
 }

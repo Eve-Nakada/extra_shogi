@@ -6,7 +6,7 @@ import { createGameRecord, restoreGameRecord } from "../core/record.js";
 import { cloneClock } from "../core/clock.js";
 import { cloneHistoryEntry, cloneMove } from "../core/state.js";
 
-export const WIRE_PROTOCOL_VERSION = 5;
+export const WIRE_PROTOCOL_VERSION = 6;
 
 export function createSyncMessage(state) {
   return {
@@ -218,6 +218,10 @@ export function selectionFromMove(state, move) {
     return { kind: "board", x: move.actor?.x, y: move.actor?.y };
   }
 
+  if (move.kind === "attackBase") {
+    return { kind: "board", x: move.actor?.x, y: move.actor?.y };
+  }
+
   return null;
 }
 
@@ -273,12 +277,23 @@ export function sameMove(a, b) {
     );
   }
 
+  if (a.kind === "attackBase") {
+    return (
+      a.actor.x === b.actor.x &&
+      a.actor.y === b.actor.y &&
+      a.target.x === b.target.x &&
+      a.target.y === b.target.y &&
+      (a.baseId ?? null) === (b.baseId ?? null) &&
+      Number(a.damage ?? 1) === Number(b.damage ?? 1)
+    );
+  }
+
   return false;
 }
 
 export function isCompatibleProtocol(version) {
-  // v2.1 accepts earlier v1-v4 messages for normal move/sync compatibility.
-  return version === 1 || version === 2 || version === 3 || version === 4 || version === WIRE_PROTOCOL_VERSION;
+  // v2.4 accepts earlier v1-v5 messages for normal move/sync compatibility.
+  return version === 1 || version === 2 || version === 3 || version === 4 || version === 5 || version === WIRE_PROTOCOL_VERSION;
 }
 
 function restoreSetupRecord(record, rulesetsById) {

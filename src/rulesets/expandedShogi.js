@@ -66,6 +66,54 @@ const HORIZONTAL_SOLDIER_MOVES = [
   { kind: "step", dx: 0, fy: 1 }
 ];
 
+
+const SPEAR_MOVES = [
+  { kind: "slide", dx: 0, fy: 1 },
+  { kind: "step", dx: -1, fy: 1 },
+  { kind: "step", dx: 1, fy: 1 }
+];
+
+const DIAGONAL_SOLDIER_MOVES = [
+  { kind: "step", dx: -1, fy: 1 },
+  { kind: "step", dx: 1, fy: 1 },
+  { kind: "step", dx: 0, fy: -1 }
+];
+
+const REAR_GUARD_MOVES = [
+  { kind: "step", dx: -1, fy: -1 },
+  { kind: "step", dx: 0, fy: -1 },
+  { kind: "step", dx: 1, fy: -1 },
+  { kind: "step", dx: -1, fy: 0 },
+  { kind: "step", dx: 1, fy: 0 }
+];
+
+const SMALL_BISHOP_MOVES = [
+  { kind: "step", dx: -1, dy: -1 },
+  { kind: "step", dx: 1, dy: -1 },
+  { kind: "step", dx: -1, dy: 1 },
+  { kind: "step", dx: 1, dy: 1 },
+  { kind: "jump", dx: -2, dy: -2 },
+  { kind: "jump", dx: 2, dy: -2 },
+  { kind: "jump", dx: -2, dy: 2 },
+  { kind: "jump", dx: 2, dy: 2 }
+];
+
+const CROSS_SOLDIER_MOVES = [
+  { kind: "step", dx: 0, fy: 1 },
+  { kind: "step", dx: 0, fy: -1 },
+  { kind: "step", dx: -1, fy: 0 },
+  { kind: "step", dx: 1, fy: 0 }
+];
+
+const NINJA_MOVES = [
+  { kind: "step", dx: -1, fy: 1 },
+  { kind: "step", dx: 1, fy: 1 },
+  { kind: "jump", dx: -2, fy: 2 },
+  { kind: "jump", dx: 2, fy: 2 },
+  { kind: "jump", dx: -2, fy: -2 },
+  { kind: "jump", dx: 2, fy: -2 }
+];
+
 const LIGHT_HORSE_MOVES = [
   { kind: "jump", dx: -1, fy: 2 },
   { kind: "jump", dx: 1, fy: 2 },
@@ -150,7 +198,7 @@ export const EXPANDED_SHOGI = {
     height: 11
   },
 
-  handOrder: ["R", "B", "M", "F", "FG", "U", "Q", "D", "T", "X", "Y", "Z", "LH", "HB", "SC", "SH", "A", "C", "W", "G", "S", "N", "L", "P"],
+  handOrder: ["R", "B", "M", "F", "FG", "IW", "U", "DR", "EG", "SRM", "NIN", "RG", "SB", "XS", "DS", "SP", "Q", "D", "T", "X", "Y", "Z", "LH", "HB", "SC", "SH", "A", "C", "W", "G", "S", "N", "L", "P"],
 
   drops: {
     enabled: true,
@@ -166,18 +214,23 @@ export const EXPANDED_SHOGI = {
     castle: {
       name: "御城",
       display: "城",
+      hp: 3,
       providesDropZone: true,
       dropRadius: 1,
+      captureMode: "occupy",
       allowedLayers: ["ground"]
     },
     carrier: {
       name: "空母",
       display: "母",
+      hp: 2,
       providesDropZone: true,
-      dropRadius: 1,
+      dropRadius: 2,
+      captureMode: "destroy",
       allowedLayers: ["ground"],
       futureAllowedLayers: ["air"],
-      enablesLayerTransfer: false
+      enablesLayerTransfer: false,
+      preparedForAirLayer: true
     }
   },
 
@@ -501,6 +554,226 @@ export const EXPANDED_SHOGI = {
       droppable: false,
       capturedAs: "LH",
       moves: GOLD_MOVES
+    },
+
+
+    SP: {
+      name: "槍兵",
+      display: "槍",
+      description: "前方へ走り、斜め前にも1マス動ける攻撃的な歩兵。",
+      category: "minor",
+      point: 2,
+      attributes: ["spear"],
+      droppable: true,
+      capturedAs: "SP",
+      promotesTo: "PSP",
+      dropRules: ["notLastRank"],
+      moves: SPEAR_MOVES
+    },
+
+    PSP: {
+      name: "成槍兵",
+      display: "槍+",
+      description: "槍兵が成った駒。金と同じ動きになり、金属性を持つ。",
+      category: "promoted",
+      point: 2,
+      attributes: ["promoted", "goldLike"],
+      promoted: true,
+      droppable: false,
+      capturedAs: "SP",
+      moves: GOLD_MOVES
+    },
+
+    DS: {
+      name: "斜兵",
+      display: "斜",
+      description: "斜め前へ進み、後ろへ1マス戻れる斜行小駒。",
+      category: "minor",
+      point: 1,
+      attributes: ["diagonal"],
+      droppable: true,
+      capturedAs: "DS",
+      promotesTo: "PDS",
+      moves: DIAGONAL_SOLDIER_MOVES
+    },
+
+    PDS: {
+      name: "成斜兵",
+      display: "斜+",
+      description: "斜兵が成った駒。金と同じ動きになり、金属性を持つ。",
+      category: "promoted",
+      point: 1,
+      attributes: ["promoted", "goldLike"],
+      promoted: true,
+      droppable: false,
+      capturedAs: "DS",
+      moves: GOLD_MOVES
+    },
+
+    RG: {
+      name: "後衛",
+      display: "後",
+      description: "後方3方向と左右へ1マス動ける支援向きの駒。",
+      category: "minor",
+      point: 2,
+      attributes: ["support"],
+      droppable: true,
+      capturedAs: "RG",
+      promotesTo: "PRG",
+      moves: REAR_GUARD_MOVES
+    },
+
+    PRG: {
+      name: "成後衛",
+      display: "後+",
+      description: "後衛が成った駒。金と同じ動きになり、金属性を持つ。",
+      category: "promoted",
+      point: 2,
+      attributes: ["promoted", "goldLike"],
+      promoted: true,
+      droppable: false,
+      capturedAs: "RG",
+      moves: GOLD_MOVES
+    },
+
+    SB: {
+      name: "小角",
+      display: "小角",
+      description: "斜め1マスと斜め2マス跳びを持つ軽量角系の駒。",
+      category: "minor",
+      point: 2,
+      attributes: ["diagonal", "jumper"],
+      droppable: true,
+      capturedAs: "SB",
+      promotesTo: "PSB",
+      moves: SMALL_BISHOP_MOVES
+    },
+
+    PSB: {
+      name: "成小角",
+      display: "小角+",
+      description: "小角が成った駒。金と同じ動きになり、金属性を持つ。",
+      category: "promoted",
+      point: 2,
+      attributes: ["promoted", "goldLike"],
+      promoted: true,
+      droppable: false,
+      capturedAs: "SB",
+      moves: GOLD_MOVES
+    },
+
+    XS: {
+      name: "十字兵",
+      display: "十",
+      description: "前後左右へ1マス動ける十字型の基本駒。",
+      category: "minor",
+      point: 1,
+      attributes: ["cross"],
+      droppable: true,
+      capturedAs: "XS",
+      promotesTo: "PXS",
+      moves: CROSS_SOLDIER_MOVES
+    },
+
+    PXS: {
+      name: "成十字兵",
+      display: "十+",
+      description: "十字兵が成った駒。金と同じ動きになり、金属性を持つ。",
+      category: "promoted",
+      point: 1,
+      attributes: ["promoted", "goldLike"],
+      promoted: true,
+      droppable: false,
+      capturedAs: "XS",
+      moves: GOLD_MOVES
+    },
+
+    EG: {
+      name: "工兵",
+      display: "工",
+      description: "御城と空母を建設できる拠点運用向けの駒。",
+      category: "baseBuilder",
+      point: 4,
+      attributes: ["baseBuilder"],
+      actions: [
+        { kind: "buildBase", baseType: "castle", range: 1, buildOn: "emptySquare" },
+        { kind: "buildBase", baseType: "carrier", range: 1, buildOn: "emptySquare" }
+      ],
+      droppable: true,
+      capturedAs: "EG",
+      moves: SHIELD_MOVES
+    },
+
+    SRM: {
+      name: "破城槌",
+      display: "槌",
+      description: "拠点攻撃に特化した攻城駒。拠点へ2点のダメージを与える。",
+      category: "special",
+      point: 4,
+      attributes: ["siege"],
+      actions: [
+        { kind: "attackBase", damage: 2 }
+      ],
+      baseDamage: 2,
+      droppable: true,
+      capturedAs: "SRM",
+      moves: RUNNER_MOVES
+    },
+
+    IW: {
+      name: "鉄壁",
+      display: "壁",
+      description: "金属性を持つ駒以外には取られない、防御特化の壁駒。",
+      category: "special",
+      point: 4,
+      attributes: ["fortified", "wall"],
+      captureRules: [
+        { kind: "requiresAttackerAttribute", attribute: "goldLike" }
+      ],
+      droppable: true,
+      capturedAs: "IW",
+      moves: SHIELD_MOVES
+    },
+
+    NIN: {
+      name: "忍者",
+      display: "忍",
+      description: "斜め前へ歩き、斜め2マスへ跳べる奇襲用の機動駒。",
+      category: "special",
+      point: 3,
+      attributes: ["ninja", "jumper"],
+      droppable: true,
+      capturedAs: "NIN",
+      promotesTo: "PNIN",
+      moves: NINJA_MOVES
+    },
+
+    PNIN: {
+      name: "成忍者",
+      display: "忍+",
+      description: "忍者が成った駒。金と同じ動きになり、金属性を持つ。",
+      category: "promoted",
+      point: 3,
+      attributes: ["promoted", "goldLike"],
+      promoted: true,
+      droppable: false,
+      capturedAs: "NIN",
+      moves: GOLD_MOVES
+    },
+
+    DR: {
+      name: "鼓舞兵",
+      display: "鼓",
+      description: "周囲1マスの味方を成らせる効果を持つ支援駒。昇格師より軽い支援枠。",
+      category: "special",
+      point: 3,
+      attributes: ["support"],
+      effects: [
+        { kind: "promoteNearby", timing: "ownTurn", radius: 1, target: "ownPieces", optional: true }
+      ],
+      droppable: true,
+      capturedAs: "DR",
+      moves: CROSS_SOLDIER_MOVES
     },
 
     W: {

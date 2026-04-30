@@ -85,6 +85,10 @@ export function cloneHistoryEntry(entry) {
     pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null,
     subEntries: Array.isArray(entry.subEntries) ? entry.subEntries.map(cloneHistoryEntry) : undefined,
     builtBase: entry.builtBase ? { ...entry.builtBase } : null,
+    baseBefore: entry.baseBefore ? { ...entry.baseBefore } : null,
+    baseAfter: entry.baseAfter ? { ...entry.baseAfter } : null,
+    baseOutcome: entry.baseOutcome ?? null,
+    baseDamage: entry.baseDamage ?? null,
     turnStateBefore: cloneTurnState(entry.turnStateBefore),
     turnStateAfter: cloneTurnState(entry.turnStateAfter)
   };
@@ -140,6 +144,16 @@ export function cloneMove(move) {
       baseType: move.baseType,
       to: { ...move.to },
       id: move.id ?? null
+    };
+  }
+
+  if (move.kind === "attackBase") {
+    return {
+      kind: "attackBase",
+      actor: { ...move.actor },
+      target: { ...move.target },
+      baseId: move.baseId,
+      damage: move.damage ?? 1
     };
   }
 

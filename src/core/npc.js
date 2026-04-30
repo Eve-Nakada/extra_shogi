@@ -51,6 +51,8 @@ export function scoreNpcAction(state, player, action) {
     score += 28 + getPiecePoint(state.ruleset, action.promoteTo) * 4;
   } else if (action.kind === "buildBase") {
     score += 22 + centerBonus(state, action.to);
+  } else if (action.kind === "attackBase") {
+    score += 45 + Number(action.damage ?? 1) * 15 + centerBonus(state, action.target);
   } else if (action.kind === "compound") {
     score += 10;
     for (const subAction of action.actions ?? []) score += scoreNpcAction(state, player, subAction) * 0.8;
