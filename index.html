@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>盤上ゲーム - 将棋HTML v1.1</title>
+  <title>盤上ゲーム - 将棋HTML v1.2</title>
   <meta name="description" content="HTML/CSS/JavaScriptだけで動作する、ローカル対局・棋譜保存・軽量通信対戦対応の将棋系盤上ゲームです。">
   <link rel="stylesheet" href="./style.css">
 </head>
@@ -11,9 +11,9 @@
   <main id="app" class="app">
     <header class="app-header compact-header">
       <div>
-        <p class="version-badge">v1.1 UI改善 Phase 1</p>
+        <p class="version-badge">v1.2 UI改善 Phase 2</p>
         <h1>盤上ゲーム - 将棋HTML</h1>
-        <p class="note">盤面優先レイアウト / ローカル対局・棋譜保存・軽量通信対戦対応</p>
+        <p class="note">対局操作改善 / ローカル対局・棋譜保存・軽量通信対戦対応</p>
       </div>
       <nav class="quick-nav" aria-label="画面内ナビゲーション">
         <a href="#board">盤面</a>
@@ -33,6 +33,18 @@
 
     <p id="message" class="message" aria-live="polite"></p>
 
+    <div id="promotion-dialog" class="promotion-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="promotion-title">
+      <div class="promotion-card">
+        <h2 id="promotion-title">成りを選択</h2>
+        <p id="promotion-text">この手は成ることができます。</p>
+        <div class="promotion-actions">
+          <button id="promotion-promote-button" class="action-button primary-action" type="button">成る</button>
+          <button id="promotion-normal-button" class="action-button" type="button">成らない</button>
+          <button id="promotion-cancel-button" class="action-button" type="button">キャンセル</button>
+        </div>
+      </div>
+    </div>
+
     <div class="layout primary-layout">
       <section class="game-panel" aria-label="将棋盤">
         <div id="white-hand" class="hand" aria-label="後手の持ち駒"></div>
@@ -42,7 +54,7 @@
         <div id="black-hand" class="hand" aria-label="先手の持ち駒"></div>
 
         <div class="quick-actions" aria-label="対局中の操作">
-          <button id="undo-button" class="action-button" type="button">1手戻す</button>
+          <button id="undo-button" class="action-button primary-action" type="button">1手戻す</button>
           <button id="resign-button" class="action-button danger-action" type="button">投了</button>
           <button id="reset-button" class="action-button" type="button">初期化</button>
           <button id="impasse-button" class="action-button" type="button">持将棋判定</button>
@@ -50,14 +62,18 @@
       </section>
 
       <aside class="record-panel" aria-label="棋譜ログ">
-        <h2>棋譜ログ</h2>
-        <div class="replay-controls" aria-label="棋譜再生">
-          <button id="replay-start-button" class="action-button" type="button">開始</button>
-          <button id="replay-prev-button" class="action-button" type="button">前へ</button>
-          <button id="replay-next-button" class="action-button" type="button">次へ</button>
-          <button id="replay-end-button" class="action-button" type="button">最新</button>
-        </div>
-        <ol id="history-list" class="history-list"></ol>
+        <details id="history-panel" class="history-panel" open>
+          <summary class="history-summary">
+            棋譜ログ <span id="history-count" class="history-count">0手</span>
+          </summary>
+          <div class="replay-controls" aria-label="棋譜再生">
+            <button id="replay-start-button" class="action-button" type="button">開始</button>
+            <button id="replay-prev-button" class="action-button" type="button">前へ</button>
+            <button id="replay-next-button" class="action-button" type="button">次へ</button>
+            <button id="replay-end-button" class="action-button" type="button">最新</button>
+          </div>
+          <ol id="history-list" class="history-list"></ol>
+        </details>
       </aside>
     </div>
 
@@ -213,7 +229,7 @@
             <li>手番側の盤上駒を選択します。</li>
             <li>緑の丸が移動可能マス、赤枠が駒取り可能マスです。</li>
             <li>持ち駒は下段または上段の持駒欄から選びます。</li>
-            <li>成れる場合は確認ダイアログで選択します。</li>
+            <li>成れる場合は画面内の成り選択パネルで選択します。</li>
           </ol>
         </section>
         <section>
@@ -238,7 +254,7 @@
     </details>
 
     <footer class="app-footer">
-      <p>v1.1 / UI改善 Phase 1。盤面優先表示と手番視認性を改善しました。</p>
+      <p>v1.2 / UI改善 Phase 2。成り選択UI、棋譜ログ折りたたみ、対局操作性を改善しました。</p>
     </footer>
   </main>
 

@@ -1318,3 +1318,138 @@ textarea {
     border-width: 1px;
   }
 }
+
+/* v1.2 UI Phase 2: smoother in-game operation. */
+.primary-action:not(:disabled) {
+  border-color: #2d6cdf;
+  background: #eef4ff;
+  color: #174ea6;
+  font-weight: 900;
+}
+
+.quick-actions .action-button {
+  font-weight: 800;
+}
+
+.record-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.history-panel {
+  padding: 12px;
+}
+
+.history-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.history-summary::-webkit-details-marker {
+  display: none;
+}
+
+.history-summary::before {
+  content: "▶";
+  color: #8a5a18;
+  font-size: 12px;
+}
+
+.history-panel[open] > .history-summary::before {
+  content: "▼";
+}
+
+.history-count {
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid #d7c8aa;
+  border-radius: 999px;
+  background: #fffdf7;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.history-panel:not([open]) {
+  min-height: auto;
+}
+
+.history-panel:not([open]) .replay-controls,
+.history-panel:not([open]) .history-list {
+  display: none;
+}
+
+.promotion-dialog[hidden] {
+  display: none;
+}
+
+.promotion-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 32%);
+}
+
+.promotion-card {
+  width: min(420px, 100%);
+  padding: 16px;
+  border: 2px solid #d7c8aa;
+  border-radius: 14px;
+  background: #fffdf7;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 24%);
+}
+
+.promotion-card h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.promotion-card p {
+  margin: 0 0 12px;
+  color: #333;
+  font-weight: 700;
+}
+
+.promotion-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.turn-bar.replay {
+  border-color: #6b7280;
+  background: linear-gradient(90deg, rgb(107 114 128 / 14%), #fffdf7 50%);
+}
+
+@media (max-width: 900px) {
+  .record-panel {
+    order: 2;
+  }
+}
+
+@media (max-width: 560px) {
+  .history-panel {
+    padding: 8px;
+  }
+
+  .history-summary {
+    font-size: 16px;
+  }
+
+  .promotion-card {
+    padding: 12px;
+  }
+
+  .promotion-actions {
+    grid-template-columns: 1fr;
+  }
+}
