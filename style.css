@@ -2191,3 +2191,21 @@ textarea {
 .special-action-button {
   min-height: var(--touch-target, 44px);
 }
+
+/* v2.4 base HP display */
+.base-marker {
+  flex-direction: column;
+  gap: 1px;
+  min-width: 28px;
+  min-height: 25px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.base-hp {
+  display: block;
+  color: #8a5a18;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}

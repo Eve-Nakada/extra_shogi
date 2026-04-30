@@ -90,8 +90,14 @@ function createBaseElement(state, base) {
   const baseDef = state.ruleset.baseDefs?.[base.kind] ?? state.ruleset.bases?.[base.kind];
   const element = document.createElement("span");
   element.className = `base-marker ${base.owner}`;
+  const hp = base.hp != null ? String(base.hp) : "-";
+  const maxHp = base.maxHp ?? baseDef?.hp ?? null;
   element.textContent = baseDef?.display ?? base.kind;
-  element.title = `${base.owner === "black" ? "先手" : "後手"} ${baseDef?.name ?? base.kind}`;
+  const hpElement = document.createElement("span");
+  hpElement.className = "base-hp";
+  hpElement.textContent = maxHp != null ? `${hp}/${maxHp}` : hp;
+  element.appendChild(hpElement);
+  element.title = `${base.owner === "black" ? "先手" : "後手"} ${baseDef?.name ?? base.kind} HP ${hp}${maxHp != null ? `/${maxHp}` : ""} / 打ち範囲 ${base.dropRadius ?? baseDef?.dropRadius ?? 1}`;
   return element;
 }
 

@@ -164,6 +164,9 @@ function summarizeActions(actions = []) {
     if (action.kind === "buildBase") {
       return `${action.baseType ?? "拠点"}を周囲${action.range ?? 1}マスに建設`;
     }
+    if (action.kind === "attackBase") {
+      return `拠点に${action.damage ?? 1}点ダメージ`;
+    }
     return action.kind ?? "不明な特殊行動";
   }).join(" / ");
 }

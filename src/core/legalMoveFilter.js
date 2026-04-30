@@ -3,8 +3,9 @@ import { isExtraActionTurnState } from "./state.js";
  
 import { applyMoveToClone } from "./applyMove.js";
 import { fromIndex, getSquare, inBoard } from "./coordinates.js";
-import { chebyshevDistance, getBaseDef, hasBaseAt, isDropAllowedByPolicy } from "./base.js";
+import { chebyshevDistance, findBaseAt, getBaseDef, hasBaseAt, isDropAllowedByPolicy } from "./base.js";
 import { isInCheck } from "./check.js";
+import { canPieceReachBase, getPieceBaseAttackDef } from "./action.js";
 import {
   canPromote,
   generatePseudoMoves,
@@ -75,6 +76,10 @@ export function isBasicLegal(state, move) {
 
   if (move.kind === "buildBase") {
     return isBasicBuildBaseLegal(state, move);
+  }
+
+  if (move.kind === "attackBase") {
+    return isBasicAttackBaseLegal(state, move);
   }
 
   return false;
@@ -244,6 +249,23 @@ export function isSelectionAllowedByTurnState(state, selection) {
   if (!isExtraActionTurnState(state.turnState)) return true;
   if (selection?.kind !== "board") return false;
   return selection.x === state.turnState.forcedPiece.x && selection.y === state.turnState.forcedPiece.y;
+}
+
+function isBasicAttackBaseLegal(state, action) {
+  if (!inBoard(action.actor.x, action.actor.y, state.board)) return false;
+  if (!inBoard(action.target.x, action.target.y, state.board)) return false;
+
+  const actor = getSquare(state, action.actor.x, action.actor.y);
+  if (!actor || actor.owner !== state.turn) return false;
+
+  const base = findBaseAt(state, action.target.x, action.target.y);
+  if (!base || base.owner === state.turn) return false;
+  if (action.baseId && base.id !== action.baseId) return false;
+
+  const actorDef = state.ruleset.pieces[actor.id];
+  if (!getPieceBaseAttackDef(actorDef)) return false;
+
+  return canPieceReachBase(state, actor, action.actor, base);
 }
 
 function isBasicCompoundLegal(state, action) {

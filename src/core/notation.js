@@ -34,6 +34,11 @@ export function formatHistoryEntry(entry, ruleset, index = null) {
     return `${prefix}${turn} ${baseDef?.display ?? entry.move.baseType}建設 ${formatSquare(entry.move.to)}`;
   }
 
+  if (entry.move.kind === "attackBase") {
+    const outcome = entry.baseOutcome === "occupied" ? "占領" : entry.baseOutcome === "destroyed" ? "破壊" : "攻撃";
+    return `${prefix}${turn} 拠点${outcome} ${formatSquare(entry.move.target)} ${entry.baseDamage ?? entry.move.damage ?? 1}点`;
+  }
+
   if (entry.move.kind === "compound") {
     const parts = (entry.subEntries ?? []).map(subEntry => formatHistoryEntry({ ...subEntry, turn: entry.turn }, ruleset)).join(" / ");
     return `${prefix}${turn} 複合 ${parts || `${entry.move.actions.length}アクション`}`;
@@ -130,6 +135,11 @@ function formatHistoryEntryForText(entry, ruleset, meta) {
     return `${player} ${formatSquare(entry.move.to)} ${baseDef?.display ?? entry.move.baseType}建設`;
   }
 
+  if (entry.move.kind === "attackBase") {
+    const outcome = entry.baseOutcome === "occupied" ? "占領" : entry.baseOutcome === "destroyed" ? "破壊" : "攻撃";
+    return `${player} ${formatSquare(entry.move.target)} 拠点${outcome} ${entry.baseDamage ?? entry.move.damage ?? 1}点`;
+  }
+
   if (entry.move.kind === "compound") {
     const parts = (entry.subEntries ?? []).map(subEntry => formatHistoryEntryForText({ ...subEntry, turn: entry.turn }, ruleset, meta));
     return `${player} 複合 ${parts.join(" / ")}`;
@@ -165,6 +175,11 @@ function formatKifLikeMove(entry, ruleset) {
   if (entry.move.kind === "buildBase") {
     const baseDef = ruleset.baseDefs?.[entry.move.baseType] ?? ruleset.bases?.[entry.move.baseType];
     return `${formatJapaneseSquare(entry.move.to)}${baseDef?.display ?? entry.move.baseType}建`;
+  }
+
+  if (entry.move.kind === "attackBase") {
+    const suffix = entry.baseOutcome === "occupied" ? "占" : entry.baseOutcome === "destroyed" ? "破" : "攻";
+    return `${formatJapaneseSquare(entry.move.target)}拠点${suffix}`;
   }
 
   if (entry.move.kind === "compound") {

@@ -955,7 +955,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     const actions = getLegalActions(state, selection);
     uiState.legalMoves = actions.filter(action => action.kind === "move" || action.kind === "drop");
     uiState.multiMoveCompounds = actions.filter(action => action.kind === "compound");
-    uiState.specialActions = actions.filter(action => action.kind === "transform" || action.kind === "buildBase");
+    uiState.specialActions = actions.filter(action => action.kind === "transform" || action.kind === "buildBase" || action.kind === "attackBase");
     uiState.multiMovePlan = null;
     uiState.targetActionPlan = null;
   }
@@ -1023,6 +1023,8 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       actions.push({ kind: "targetPlan", targetKind: "buildBase", actions: buildBaseActions, baseType });
     }
 
+    actions.push(...uiState.specialActions.filter(action => action.kind === "attackBase"));
+
     actions.push(...uiState.specialActions.filter(action => action.kind === "multiMoveStop"));
 
     if (!uiState.multiMovePlan && uiState.selected?.kind === "board") {
@@ -1071,6 +1073,10 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     if (action.kind === "buildBase") {
       const baseDef = state.ruleset.baseDefs?.[action.baseType] ?? state.ruleset.bases?.[action.baseType];
       return `${baseDef?.display ?? action.baseType}を${action.to.x + 1},${action.to.y + 1}に建設`;
+    }
+
+    if (action.kind === "attackBase") {
+      return `拠点を攻撃 ${action.target.x + 1},${action.target.y + 1} / ${action.damage ?? 1}点`;
     }
 
     return "特殊アクション";

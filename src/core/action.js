@@ -1,6 +1,6 @@
 import { applyMove, applyMoveToClone } from "./applyMove.js";
 import { getSquare, inBoard } from "./coordinates.js";
-import { hasBaseAt } from "./base.js";
+import { findBaseAt, hasBaseAt } from "./base.js";
 import { getLegalMoves, isBasicLegal, isSelectionAllowedByTurnState, leavesOwnRoyalInCheck } from "./legalMoveFilter.js";
 import { isExtraActionTurnState } from "./state.js";
 
@@ -15,6 +15,7 @@ export function getLegalActions(state, selection, options = {}) {
   if (selection?.kind === "board" && !isExtraActionTurnState(state.turnState)) {
     actions.push(...getLegalTransformActions(state, selection));
     actions.push(...getLegalBuildBaseActions(state, selection));
+    actions.push(...getLegalAttackBaseActions(state, selection));
     actions.push(...getLegalCompoundActions(state, selection, options));
   }
 
@@ -81,6 +82,76 @@ export function getLegalBuildBaseActions(state, selection) {
   }
 
   return actions;
+}
+
+export function getLegalAttackBaseActions(state, selection) {
+  const piece = getSquare(state, selection.x, selection.y);
+  if (!piece || piece.owner !== state.turn) return [];
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  const attackDef = getPieceBaseAttackDef(pieceDef);
+  if (!attackDef) return [];
+
+  const actions = [];
+  for (const base of state.bases ?? []) {
+    if (base.owner === state.turn) continue;
+    if (!canPieceReachBase(state, piece, selection, base)) continue;
+
+    const action = {
+      kind: "attackBase",
+      actor: { x: selection.x, y: selection.y },
+      target: { x: base.x, y: base.y },
+      baseId: base.id,
+      damage: Math.max(1, Number(attackDef.damage ?? pieceDef.baseDamage ?? 1))
+    };
+
+    if (isBasicLegal(state, action) && !leavesOwnRoyalInCheck(state, action)) {
+      actions.push(action);
+    }
+  }
+
+  return actions;
+}
+
+export function getPieceBaseAttackDef(pieceDef) {
+  if (!pieceDef) return null;
+  const explicit = (pieceDef.actions ?? []).find(action => action.kind === "attackBase");
+  if (explicit) return explicit;
+  if (pieceDef.baseDamage != null || pieceDef.attributes?.includes("siege")) {
+    return { kind: "attackBase", damage: pieceDef.baseDamage ?? 1 };
+  }
+  return null;
+}
+
+export function canPieceReachBase(state, piece, from, base) {
+  const pieceDef = state.ruleset.pieces[piece.id];
+  if (!pieceDef) return false;
+
+  for (const moveDef of pieceDef.moves ?? []) {
+    const dx = moveDef.dx ?? 0;
+    const dy = Object.hasOwn(moveDef, "fy")
+      ? moveDef.fy * (piece.owner === "black" ? -1 : 1)
+      : (moveDef.dy ?? 0);
+
+    if (moveDef.kind === "step" || moveDef.kind === "jump") {
+      if (from.x + dx === base.x && from.y + dy === base.y) return true;
+      continue;
+    }
+
+    if (moveDef.kind === "slide") {
+      let x = from.x + dx;
+      let y = from.y + dy;
+      while (inBoard(x, y, state.board)) {
+        const blockingBase = findBaseAt(state, x, y);
+        if (x === base.x && y === base.y) return Boolean(blockingBase?.id === base.id);
+        if (getSquare(state, x, y) || blockingBase) break;
+        x += dx;
+        y += dy;
+      }
+    }
+  }
+
+  return false;
 }
 
 export function getLegalCompoundActions(state, selection, options = {}) {

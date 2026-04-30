@@ -1,7 +1,7 @@
 import { canCapture } from "./capture.js";
 import { cloneMove, cloneState, cloneTurnState, createDefaultTurnState, isExtraActionTurnState, opposite } from "./state.js";
 import { getSquare, setSquare } from "./coordinates.js";
-import { chebyshevDistance, createBaseFromAction, getBaseDef, hasBaseAt } from "./base.js";
+import { chebyshevDistance, createBaseFromAction, damageBase, findBaseAt, getBaseDef, hasBaseAt } from "./base.js";
 
 export function applyMove(state, move, options = {}) {
   const { updateTurn = true, updateHistory = true } = options;
@@ -21,6 +21,8 @@ export function applyMove(state, move, options = {}) {
     result = applyCompoundAction(state, mover, move);
   } else if (move.kind === "buildBase") {
     result = applyBuildBaseAction(state, mover, move);
+  } else if (move.kind === "attackBase") {
+    result = applyAttackBaseAction(state, mover, move);
   } else {
     throw new Error(`未知の指し手種別です: ${move.kind}`);
   }
@@ -38,6 +40,10 @@ export function applyMove(state, move, options = {}) {
       pieceAfter: result.pieceAfter ? { ...result.pieceAfter } : null,
       subEntries: result.subEntries ? result.subEntries.map(cloneHistoryEntryLike) : undefined,
       builtBase: result.builtBase ? { ...result.builtBase } : null,
+      baseBefore: result.baseBefore ? { ...result.baseBefore } : null,
+      baseAfter: result.baseAfter ? { ...result.baseAfter } : null,
+      baseOutcome: result.baseOutcome ?? null,
+      baseDamage: result.baseDamage ?? null,
       turnStateBefore,
       turnStateAfter: cloneTurnState(state.turnState)
     });
@@ -163,6 +169,10 @@ function applyCompoundAction(state, mover, action) {
     pieceAfter: lastResult?.pieceAfter ?? null,
     subEntries,
     builtBase: subEntries.find(entry => entry.builtBase)?.builtBase ?? null,
+    baseBefore: subEntries.find(entry => entry.baseBefore)?.baseBefore ?? null,
+    baseAfter: subEntries.find(entry => entry.baseAfter)?.baseAfter ?? null,
+    baseOutcome: subEntries.find(entry => entry.baseOutcome)?.baseOutcome ?? null,
+    baseDamage: subEntries.find(entry => entry.baseDamage)?.baseDamage ?? null,
     finalSquare: getActionFinalSquare(action.actions.at(-1))
   };
 }
@@ -197,6 +207,34 @@ function applyBuildBaseAction(state, mover, action) {
     pieceAfter: { ...actor },
     builtBase: { ...builtBase },
     finalSquare: { ...action.to }
+  };
+}
+
+function applyAttackBaseAction(state, mover, action) {
+  const actor = getSquare(state, action.actor.x, action.actor.y);
+  if (!actor || actor.owner !== mover) throw new Error("拠点攻撃元に手番側の駒がありません。");
+
+  const base = findBaseAt(state, action.target.x, action.target.y);
+  if (!base || base.id !== action.baseId) throw new Error("攻撃対象の拠点がありません。");
+  if (base.owner === mover) throw new Error("自分の拠点は攻撃できません。");
+
+  const actorDef = state.ruleset.pieces[actor.id];
+  const attackAction = (actorDef?.actions ?? []).find(candidate => candidate.kind === "attackBase");
+  const damage = Math.max(1, Number(action.damage ?? attackAction?.damage ?? actorDef?.baseDamage ?? 1));
+  if (!attackAction && actorDef?.baseDamage == null && !actorDef?.attributes?.includes("siege")) {
+    throw new Error("この駒は拠点を攻撃できません。");
+  }
+
+  const result = damageBase(state, base.id, mover, damage);
+  return {
+    captured: null,
+    pieceBefore: { ...actor },
+    pieceAfter: { ...actor },
+    baseBefore: result.before,
+    baseAfter: result.after,
+    baseOutcome: result.outcome,
+    baseDamage: result.damage,
+    finalSquare: { ...action.target }
   };
 }
 
@@ -289,6 +327,7 @@ function getActionFinalSquare(action) {
   if (action.kind === "transform") return { ...action.from };
   if (action.kind === "triggerEffect") return { ...action.target };
   if (action.kind === "compound") return getActionFinalSquare(action.actions.at(-1));
+  if (action.kind === "attackBase") return { ...action.target };
   return null;
 }
 
@@ -301,6 +340,10 @@ function cloneHistoryEntryLike(entry) {
     pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null,
     subEntries: entry.subEntries ? entry.subEntries.map(cloneHistoryEntryLike) : undefined,
     builtBase: entry.builtBase ? { ...entry.builtBase } : null,
+    baseBefore: entry.baseBefore ? { ...entry.baseBefore } : null,
+    baseAfter: entry.baseAfter ? { ...entry.baseAfter } : null,
+    baseOutcome: entry.baseOutcome ?? null,
+    baseDamage: entry.baseDamage ?? null,
     turnStateBefore: cloneTurnState(entry.turnStateBefore),
     turnStateAfter: cloneTurnState(entry.turnStateAfter)
   };
