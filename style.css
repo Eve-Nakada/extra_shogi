@@ -929,3 +929,156 @@ textarea {
     font-size: 14px;
   }
 }
+
+/* v1.0 public UI polish */
+.version-badge {
+  display: inline-flex;
+  width: fit-content;
+  margin: 0 0 6px;
+  padding: 4px 9px;
+  border: 1px solid #d7c8aa;
+  border-radius: 999px;
+  background: #fffdf7;
+  color: #5a3a16;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.quick-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quick-nav a {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid #d7c8aa;
+  border-radius: 999px;
+  background: #fffdf7;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.quick-nav a:hover {
+  background: #f6f1e7;
+}
+
+.intro-panel,
+.help-panel,
+.app-footer {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #ddd1bd;
+  border-radius: 10px;
+  background: #fffdf7;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 6%);
+}
+
+.intro-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.8fr);
+  gap: 12px;
+}
+
+.intro-panel h2,
+.help-panel h3 {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+
+.intro-panel p {
+  margin: 0;
+  color: #333;
+}
+
+.feature-list {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--muted);
+}
+
+.help-panel summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.help-grid section {
+  padding: 10px;
+  border: 1px solid #e1d4be;
+  border-radius: 8px;
+  background: #fdf8ed;
+}
+
+.help-grid ol {
+  margin: 0;
+  padding-left: 1.2em;
+  color: #444;
+  font-size: 13px;
+}
+
+.help-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.app-footer {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.app-footer p {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .app-header,
+  .intro-panel {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .help-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .quick-nav {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .quick-nav a {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .intro-panel,
+  .help-panel,
+  .app-footer {
+    padding: 8px;
+    border-radius: 8px;
+  }
+}
