@@ -2,6 +2,8 @@ import { playerName } from "../core/state.js";
 
 export function renderHands(handElement, state, owner, uiState) {
   handElement.innerHTML = "";
+  handElement.classList.toggle("active-turn", state.status.type === "playing" && owner === state.turn);
+  handElement.classList.toggle("inactive-turn", state.status.type === "playing" && owner !== state.turn);
 
   const title = document.createElement("div");
   title.className = "hand-title";

@@ -26,6 +26,9 @@ export function renderBoard(boardElement, state, uiState) {
       }
 
       const piece = getSquare(state, x, y);
+      if (piece?.owner === state.turn && state.status.type === "playing") {
+        square.classList.add("active-turn-piece-square");
+      }
       if (piece) {
         square.appendChild(createPieceElement(state, piece));
       }
@@ -54,6 +57,9 @@ function createPieceElement(state, piece) {
   const pieceDef = state.ruleset.pieces[piece.id];
   const element = document.createElement("span");
   element.className = `piece ${piece.owner}`;
+  if (piece.owner === state.turn && state.status.type === "playing") {
+    element.classList.add("active-turn-piece");
+  }
   if (pieceDef?.promoted) element.classList.add("promoted");
   element.textContent = pieceDef?.display ?? piece.id;
   element.title = pieceDef?.name ?? piece.id;

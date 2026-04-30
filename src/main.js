@@ -7,6 +7,7 @@ const elements = {
   blackHand: document.getElementById("black-hand"),
   whiteHand: document.getElementById("white-hand"),
   status: document.getElementById("status"),
+  turnBar: document.getElementById("turn-bar"),
   message: document.getElementById("message"),
   rulesetSelect: document.getElementById("ruleset-select"),
   resignButton: document.getElementById("resign-button"),

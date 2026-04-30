@@ -3,124 +3,84 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>盤上ゲーム - 将棋HTML v1.0</title>
+  <title>盤上ゲーム - 将棋HTML v1.1</title>
   <meta name="description" content="HTML/CSS/JavaScriptだけで動作する、ローカル対局・棋譜保存・軽量通信対戦対応の将棋系盤上ゲームです。">
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <main id="app" class="app">
-    <header class="app-header">
+    <header class="app-header compact-header">
       <div>
-        <p class="version-badge">v1.0 公開版</p>
+        <p class="version-badge">v1.1 UI改善 Phase 1</p>
         <h1>盤上ゲーム - 将棋HTML</h1>
-        <p class="note">ローカル対局・棋譜保存・拡張ルール・軽量通信対戦・観戦・持ち時間</p>
+        <p class="note">盤面優先レイアウト / ローカル対局・棋譜保存・軽量通信対戦対応</p>
       </div>
       <nav class="quick-nav" aria-label="画面内ナビゲーション">
         <a href="#board">盤面</a>
-        <a href="#online-help">通信手順</a>
+        <a href="#settings-panel">設定</a>
+        <a href="#online-help">通信</a>
         <a href="#record-help">保存・棋譜</a>
       </nav>
     </header>
 
-    <section class="intro-panel" aria-label="公開版の概要">
-      <div>
-        <h2>使い方の概要</h2>
-        <p>手番側の駒または持ち駒を選ぶと、合法手だけが盤面に表示されます。ハイライトされたマスを押すと着手します。</p>
+    <section id="turn-bar" class="turn-bar" aria-label="現在の手番">
+      <div id="status" class="status turn-status" role="status" aria-live="polite">手番：先手</div>
+      <div class="turn-bar-detail" aria-label="対局状態">
+        <span id="turn-summary" class="turn-summary">手数 0</span>
+        <span id="turn-side" class="turn-side">先手</span>
       </div>
-      <ul class="feature-list">
-        <li>本将棋と11x11拡張検証ルール</li>
-        <li>JSON保存・KIF風テキスト出力</li>
-        <li>WebRTC手動接続による無料通信対戦</li>
-      </ul>
     </section>
 
-    <details class="help-panel" open>
-      <summary>操作説明</summary>
-      <div class="help-grid">
-        <section>
-          <h3>基本操作</h3>
-          <ol>
-            <li>手番側の盤上駒を選択します。</li>
-            <li>緑の丸が移動可能マス、赤枠が駒取り可能マスです。</li>
-            <li>持ち駒は下段または上段の持駒欄から選びます。</li>
-            <li>成れる場合は確認ダイアログで選択します。</li>
-          </ol>
-        </section>
-        <section id="record-help">
-          <h3>保存・棋譜</h3>
-          <ol>
-            <li>「ローカル保存」は同じブラウザ内へ保存します。</li>
-            <li>「JSON書出」は別端末への受け渡しやバックアップ用です。</li>
-            <li>対局メタ情報を入力してから「棋譜テキスト書出」を押すとKIF風テキストを保存できます。</li>
-          </ol>
-        </section>
-        <section id="online-help">
-          <h3>通信対戦</h3>
-          <ol>
-            <li>ホストが「ホスト開始（先手）」を押して出力コードを送ります。</li>
-            <li>ゲストが入力コードに貼り、「ゲスト回答作成（後手）」を押して回答コードを返します。</li>
-            <li>ホストが回答コードを貼り、「回答読込」を押すと接続します。</li>
-            <li>接続できない場合は「同期要求」「疎通確認」「再接続オファー作成」を使います。</li>
-          </ol>
-        </section>
-      </div>
-      <p class="help-note">通信対戦は不正対策なしの軽量方式です。接続コードは信頼できる相手にのみ共有してください。</p>
+    <p id="message" class="message" aria-live="polite"></p>
+
+    <div class="layout primary-layout">
+      <section class="game-panel" aria-label="将棋盤">
+        <div id="white-hand" class="hand" aria-label="後手の持ち駒"></div>
+
+        <div id="board" class="board" aria-label="盤面"></div>
+
+        <div id="black-hand" class="hand" aria-label="先手の持ち駒"></div>
+
+        <div class="quick-actions" aria-label="対局中の操作">
+          <button id="undo-button" class="action-button" type="button">1手戻す</button>
+          <button id="resign-button" class="action-button danger-action" type="button">投了</button>
+          <button id="reset-button" class="action-button" type="button">初期化</button>
+          <button id="impasse-button" class="action-button" type="button">持将棋判定</button>
+        </div>
+      </section>
+
+      <aside class="record-panel" aria-label="棋譜ログ">
+        <h2>棋譜ログ</h2>
+        <div class="replay-controls" aria-label="棋譜再生">
+          <button id="replay-start-button" class="action-button" type="button">開始</button>
+          <button id="replay-prev-button" class="action-button" type="button">前へ</button>
+          <button id="replay-next-button" class="action-button" type="button">次へ</button>
+          <button id="replay-end-button" class="action-button" type="button">最新</button>
+        </div>
+        <ol id="history-list" class="history-list"></ol>
+      </aside>
+    </div>
+
+    <details id="settings-panel" class="settings-panel compact-panel">
+      <summary>対局設定・保存</summary>
+      <section class="toolbar" aria-label="ゲーム設定と保存">
+        <label class="field-label" for="ruleset-select">
+          ルールセット
+          <select id="ruleset-select" class="ruleset-select"></select>
+        </label>
+
+        <div class="toolbar-group" aria-label="保存と読み込み">
+          <button id="save-local-button" class="action-button" type="button">ローカル保存</button>
+          <button id="load-local-button" class="action-button" type="button">ローカル読込</button>
+          <button id="export-button" class="action-button" type="button">JSON書出</button>
+          <button id="import-button" class="action-button" type="button">JSON読込</button>
+          <input id="import-input" class="hidden-file" type="file" accept="application/json,.json">
+        </div>
+      </section>
     </details>
 
-    <section class="toolbar" aria-label="ゲーム設定と保存">
-      <label class="field-label" for="ruleset-select">
-        ルールセット
-        <select id="ruleset-select" class="ruleset-select"></select>
-      </label>
-
-      <div class="toolbar-group" aria-label="局面操作">
-        <button id="undo-button" class="action-button" type="button">1手戻す</button>
-        <button id="reset-button" class="action-button" type="button">初期化</button>
-        <button id="resign-button" class="action-button" type="button">投了</button>
-        <button id="impasse-button" class="action-button" type="button">持将棋判定</button>
-      </div>
-
-      <div class="toolbar-group" aria-label="保存と読み込み">
-        <button id="save-local-button" class="action-button" type="button">ローカル保存</button>
-        <button id="load-local-button" class="action-button" type="button">ローカル読込</button>
-        <button id="export-button" class="action-button" type="button">JSON書出</button>
-        <button id="import-button" class="action-button" type="button">JSON読込</button>
-        <input id="import-input" class="hidden-file" type="file" accept="application/json,.json">
-      </div>
-    </section>
-
-    <section class="meta-panel" aria-label="対局メタ情報">
-      <div class="meta-header">
-        <h2>対局メタ情報</h2>
-        <div class="toolbar-group">
-          <button id="export-text-button" class="action-button" type="button">棋譜テキスト書出</button>
-          <button id="copy-text-button" class="action-button" type="button">棋譜テキストコピー</button>
-        </div>
-      </div>
-      <div class="meta-grid">
-        <label class="field-label vertical" for="meta-title">表題
-          <input id="meta-title" class="text-input" type="text" placeholder="例：練習対局">
-        </label>
-        <label class="field-label vertical" for="meta-black-name">先手名
-          <input id="meta-black-name" class="text-input" type="text" placeholder="先手">
-        </label>
-        <label class="field-label vertical" for="meta-white-name">後手名
-          <input id="meta-white-name" class="text-input" type="text" placeholder="後手">
-        </label>
-        <label class="field-label vertical" for="meta-event-name">棋戦・イベント
-          <input id="meta-event-name" class="text-input" type="text" placeholder="任意">
-        </label>
-        <label class="field-label vertical" for="meta-location">場所
-          <input id="meta-location" class="text-input" type="text" placeholder="任意">
-        </label>
-        <label class="field-label vertical meta-notes-field" for="meta-notes">備考
-          <textarea id="meta-notes" class="meta-notes" placeholder="任意"></textarea>
-        </label>
-      </div>
-      <textarea id="text-record-output" class="text-record-output" readonly placeholder="棋譜テキスト書出またはコピー時に、ここへ出力されます"></textarea>
-    </section>
-
-    <section class="clock-panel" aria-label="持ち時間設定">
+    <details class="clock-panel compact-panel">
+      <summary>持ち時間</summary>
       <div class="clock-header">
         <h2>持ち時間</h2>
         <div id="clock-display" class="clock-display">先手 --:-- / 後手 --:--</div>
@@ -141,11 +101,12 @@
         <button id="clock-apply-button" class="action-button" type="button">時計設定を反映</button>
         <button id="clock-pause-button" class="action-button" type="button">時計停止</button>
       </div>
-    </section>
+    </details>
 
-    <section class="online-panel" aria-label="軽量通信対戦">
+    <details class="online-panel compact-panel" aria-label="軽量通信対戦">
+      <summary id="online-help">軽量通信対戦 / 観戦 / 再接続 / 診断</summary>
       <div class="online-header">
-        <h2>軽量通信対戦 / 観戦 / 再接続 / 診断</h2>
+        <h2>軽量通信対戦</h2>
         <div class="online-badges">
           <span>状態: <strong id="online-status">未接続</strong></span>
           <span>自分: <strong id="online-role">未設定</strong></span>
@@ -189,44 +150,95 @@
         </label>
       </div>
 
-      <details class="connection-log-panel" open>
+      <details class="connection-log-panel">
         <summary>通信ログ</summary>
         <div class="connection-log-actions">
           <button id="clear-connection-log-button" class="action-button" type="button">ログ消去</button>
         </div>
         <ol id="connection-log" class="connection-log"></ol>
       </details>
-    </section>
+    </details>
 
-    <p id="message" class="message" aria-live="polite"></p>
-
-    <div class="layout">
-      <section class="game-panel" aria-label="将棋盤">
-        <div id="white-hand" class="hand" aria-label="後手の持ち駒"></div>
-
-        <div class="status-row">
-          <div id="status" class="status" role="status" aria-live="polite"></div>
+    <details class="meta-panel compact-panel">
+      <summary id="record-help">対局メタ情報・棋譜テキスト</summary>
+      <div class="meta-header">
+        <h2>対局メタ情報</h2>
+        <div class="toolbar-group">
+          <button id="export-text-button" class="action-button" type="button">棋譜テキスト書出</button>
+          <button id="copy-text-button" class="action-button" type="button">棋譜テキストコピー</button>
         </div>
+      </div>
+      <div class="meta-grid">
+        <label class="field-label vertical" for="meta-title">表題
+          <input id="meta-title" class="text-input" type="text" placeholder="例：練習対局">
+        </label>
+        <label class="field-label vertical" for="meta-black-name">先手名
+          <input id="meta-black-name" class="text-input" type="text" placeholder="先手">
+        </label>
+        <label class="field-label vertical" for="meta-white-name">後手名
+          <input id="meta-white-name" class="text-input" type="text" placeholder="後手">
+        </label>
+        <label class="field-label vertical" for="meta-event-name">棋戦・イベント
+          <input id="meta-event-name" class="text-input" type="text" placeholder="任意">
+        </label>
+        <label class="field-label vertical" for="meta-location">場所
+          <input id="meta-location" class="text-input" type="text" placeholder="任意">
+        </label>
+        <label class="field-label vertical meta-notes-field" for="meta-notes">備考
+          <textarea id="meta-notes" class="meta-notes" placeholder="任意"></textarea>
+        </label>
+      </div>
+      <textarea id="text-record-output" class="text-record-output" readonly placeholder="棋譜テキスト書出またはコピー時に、ここへ出力されます"></textarea>
+    </details>
 
-        <div id="board" class="board" aria-label="盤面"></div>
+    <details class="intro-panel compact-panel">
+      <summary>使い方の概要</summary>
+      <div>
+        <h2>使い方の概要</h2>
+        <p>手番側の駒または持ち駒を選ぶと、合法手だけが盤面に表示されます。ハイライトされたマスを押すと着手します。</p>
+      </div>
+      <ul class="feature-list">
+        <li>本将棋と11x11拡張検証ルール</li>
+        <li>JSON保存・KIF風テキスト出力</li>
+        <li>WebRTC手動接続による無料通信対戦</li>
+      </ul>
+    </details>
 
-        <div id="black-hand" class="hand" aria-label="先手の持ち駒"></div>
-      </section>
-
-      <aside class="record-panel" aria-label="棋譜ログ">
-        <h2>棋譜ログ</h2>
-        <div class="replay-controls" aria-label="棋譜再生">
-          <button id="replay-start-button" class="action-button" type="button">開始</button>
-          <button id="replay-prev-button" class="action-button" type="button">前へ</button>
-          <button id="replay-next-button" class="action-button" type="button">次へ</button>
-          <button id="replay-end-button" class="action-button" type="button">最新</button>
-        </div>
-        <ol id="history-list" class="history-list"></ol>
-      </aside>
-    </div>
+    <details class="help-panel compact-panel">
+      <summary>操作説明</summary>
+      <div class="help-grid">
+        <section>
+          <h3>基本操作</h3>
+          <ol>
+            <li>手番側の盤上駒を選択します。</li>
+            <li>緑の丸が移動可能マス、赤枠が駒取り可能マスです。</li>
+            <li>持ち駒は下段または上段の持駒欄から選びます。</li>
+            <li>成れる場合は確認ダイアログで選択します。</li>
+          </ol>
+        </section>
+        <section>
+          <h3>保存・棋譜</h3>
+          <ol>
+            <li>「ローカル保存」は同じブラウザ内へ保存します。</li>
+            <li>「JSON書出」は別端末への受け渡しやバックアップ用です。</li>
+            <li>対局メタ情報を入力してから「棋譜テキスト書出」を押すとKIF風テキストを保存できます。</li>
+          </ol>
+        </section>
+        <section>
+          <h3>通信対戦</h3>
+          <ol>
+            <li>ホストが「ホスト開始（先手）」を押して出力コードを送ります。</li>
+            <li>ゲストが入力コードに貼り、「ゲスト回答作成（後手）」を押して回答コードを返します。</li>
+            <li>ホストが回答コードを貼り、「回答読込」を押すと接続します。</li>
+            <li>接続できない場合は「同期要求」「疎通確認」「再接続オファー作成」を使います。</li>
+          </ol>
+        </section>
+      </div>
+      <p class="help-note">通信対戦は不正対策なしの軽量方式です。接続コードは信頼できる相手にのみ共有してください。</p>
+    </details>
 
     <footer class="app-footer">
-      <p>v1.0 / 静的HTML公開版。サーバー権威型の不正対策は行いません。</p>
+      <p>v1.1 / UI改善 Phase 1。盤面優先表示と手番視認性を改善しました。</p>
     </footer>
   </main>
 

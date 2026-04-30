@@ -617,6 +617,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
     elements.status.textContent = createDisplayStatusText(displayState);
     elements.status.classList.toggle("check", isCurrentTurnInCheck(displayState));
+    renderTurnBar(displayState);
 
     renderMetaPanel();
     renderTextRecordPreview();
@@ -624,6 +625,42 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     renderActionButtons();
     renderOnlinePanel();
     renderConnectionLog(elements.connectionLog, connectionLog);
+  }
+
+
+  function renderTurnBar(displayState) {
+    if (!elements.turnBar) return;
+
+    const snapshot = onlineSession.getSnapshot();
+    const isEnded = displayState.status.type === "ended";
+    const inCheck = isCurrentTurnInCheck(displayState);
+    const ply = state.history.length;
+    const turnLabel = playerName(displayState.turn);
+
+    elements.turnBar.classList.toggle("black-turn", !isEnded && displayState.turn === "black");
+    elements.turnBar.classList.toggle("white-turn", !isEnded && displayState.turn === "white");
+    elements.turnBar.classList.toggle("ended", isEnded);
+    elements.turnBar.classList.toggle("check", inCheck);
+    elements.turnBar.classList.toggle("replay", isReplayMode());
+
+    const summary = elements.turnBar.querySelector("#turn-summary");
+    const side = elements.turnBar.querySelector("#turn-side");
+
+    if (summary) {
+      const mode = isReplayMode() ? `再生 ${getReplayIndex()}/${state.history.length}` : `手数 ${ply}`;
+      const online = onlineSession.isOnlineMode()
+        ? snapshot.spectating
+          ? "観戦中"
+          : snapshot.connected
+            ? (snapshot.localPlayer === state.turn ? "あなたの手番" : "相手の手番")
+            : "通信準備中"
+        : "ローカル対局";
+      summary.textContent = `${mode} / ${online}${inCheck ? " / 王手" : ""}`;
+    }
+
+    if (side) {
+      side.textContent = isEnded ? "終局" : `${turnLabel}番`;
+    }
   }
 
   function renderClockPanel() {
