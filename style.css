@@ -1453,3 +1453,129 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* v1.3 UI Phase 3: board assistance and preference controls. */
+.view-options-panel {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #ddd1bd;
+  border-radius: 10px;
+  background: #fffdf7;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 6%);
+}
+
+.view-options-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px 12px;
+}
+
+.inline-check {
+  min-height: var(--touch-target);
+  padding: 6px 8px;
+  border: 1px solid #d7c8aa;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.square.last-move-from::before,
+.square.last-move-to::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  z-index: 0;
+  border-radius: 9px;
+  pointer-events: none;
+}
+
+.square.last-move-from::before {
+  border: 2px dashed rgb(90 58 22 / 45%);
+  background: rgb(255 255 255 / 18%);
+}
+
+.square.last-move-to::before {
+  border: 3px solid rgb(45 108 223 / 68%);
+  background: rgb(45 108 223 / 12%);
+}
+
+.square.royal-in-check {
+  background: #f5a3a3;
+}
+
+.square.royal-in-check::after {
+  content: "王手";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 3;
+  padding: 1px 3px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+.square.royal-in-check.legal::after,
+.square.royal-in-check.capture::after {
+  content: "王手";
+  inset: auto;
+  top: 2px;
+  right: 2px;
+  border: 0;
+  background: var(--danger);
+}
+
+.piece.viewer-white.black {
+  transform: rotate(180deg);
+}
+
+.piece.viewer-white.white {
+  transform: none;
+}
+
+.board.view-white .piece.white.active-turn-piece,
+.board.view-white .piece.white.promoted {
+  transform: none;
+}
+
+.board.view-white .piece.black.promoted,
+.board.view-white .piece.black.active-turn-piece {
+  transform: rotate(180deg);
+}
+
+.board.view-white .piece.black.promoted.active-turn-piece {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 760px) {
+  .view-options-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    align-items: stretch;
+  }
+
+  .inline-check {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .view-options-panel {
+    padding: 8px;
+    border-radius: 8px;
+  }
+
+  .square.last-move-from::before,
+  .square.last-move-to::before {
+    inset: 3px;
+    border-width: 2px;
+  }
+
+  .square.royal-in-check::after {
+    font-size: 8px;
+  }
+}
