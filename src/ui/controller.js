@@ -842,7 +842,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   function setActionsForSelection(selection) {
     const actions = getLegalActions(state, selection);
     uiState.legalMoves = actions.filter(action => action.kind === "move" || action.kind === "drop");
-    uiState.specialActions = actions.filter(action => action.kind === "transform" || action.kind === "compound");
+    uiState.specialActions = actions.filter(action => action.kind === "transform" || action.kind === "compound" || action.kind === "buildBase");
   }
 
   function handleSpecialActionClick(event) {
@@ -866,7 +866,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       return;
     }
 
-    const selectedActions = uiState.specialActions.filter(action => action.kind === "transform" || action.kind === "compound");
+    const selectedActions = uiState.specialActions.filter(action => action.kind === "transform" || action.kind === "compound" || action.kind === "buildBase");
     const triggered = getAvailableTriggeredActions(state, state.turn);
     const actions = [...selectedActions, ...triggered];
     uiState.specialActions = actions;
@@ -908,6 +908,11 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       const first = action.actions[0];
       const last = action.actions.at(-1);
       return `2回行動 ${formatActionPath(first)} → ${formatActionPath(last)}`;
+    }
+
+    if (action.kind === "buildBase") {
+      const baseDef = state.ruleset.baseDefs?.[action.baseType] ?? state.ruleset.bases?.[action.baseType];
+      return `${baseDef?.display ?? action.baseType}を${action.to.x + 1},${action.to.y + 1}に建設`;
     }
 
     return "特殊アクション";

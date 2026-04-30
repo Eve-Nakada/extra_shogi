@@ -1,6 +1,7 @@
 import { canCapture } from "./capture.js";
 import { cloneMove, cloneState, cloneTurnState, createDefaultTurnState, isExtraActionTurnState, opposite } from "./state.js";
 import { getSquare, setSquare } from "./coordinates.js";
+import { chebyshevDistance, createBaseFromAction, getBaseDef, hasBaseAt } from "./base.js";
 
 export function applyMove(state, move, options = {}) {
   const { updateTurn = true, updateHistory = true } = options;
@@ -18,6 +19,8 @@ export function applyMove(state, move, options = {}) {
     result = applyTriggerEffectAction(state, mover, move);
   } else if (move.kind === "compound") {
     result = applyCompoundAction(state, mover, move);
+  } else if (move.kind === "buildBase") {
+    result = applyBuildBaseAction(state, mover, move);
   } else {
     throw new Error(`未知の指し手種別です: ${move.kind}`);
   }
@@ -34,6 +37,7 @@ export function applyMove(state, move, options = {}) {
       pieceBefore: result.pieceBefore ? { ...result.pieceBefore } : null,
       pieceAfter: result.pieceAfter ? { ...result.pieceAfter } : null,
       subEntries: result.subEntries ? result.subEntries.map(cloneHistoryEntryLike) : undefined,
+      builtBase: result.builtBase ? { ...result.builtBase } : null,
       turnStateBefore,
       turnStateAfter: cloneTurnState(state.turnState)
     });
@@ -59,6 +63,10 @@ function applyBoardMove(state, mover, move) {
   const piece = getSquare(state, move.from.x, move.from.y);
   if (!piece || piece.owner !== mover) {
     throw new Error("移動元に手番側の駒がありません。");
+  }
+
+  if (hasBaseAt(state, move.to.x, move.to.y)) {
+    throw new Error("拠点があるマスへは移動できません。");
   }
 
   const target = getSquare(state, move.to.x, move.to.y);
@@ -99,7 +107,7 @@ function applyDropMove(state, mover, move) {
     throw new Error("持ち駒が足りません。");
   }
 
-  if (getSquare(state, move.to.x, move.to.y)) {
+  if (getSquare(state, move.to.x, move.to.y) || hasBaseAt(state, move.to.x, move.to.y)) {
     throw new Error("駒打ちは空きマスにしかできません。");
   }
 
@@ -154,7 +162,41 @@ function applyCompoundAction(state, mover, action) {
     pieceBefore: firstResult?.pieceBefore ?? null,
     pieceAfter: lastResult?.pieceAfter ?? null,
     subEntries,
+    builtBase: subEntries.find(entry => entry.builtBase)?.builtBase ?? null,
     finalSquare: getActionFinalSquare(action.actions.at(-1))
+  };
+}
+
+function applyBuildBaseAction(state, mover, action) {
+  const actor = getSquare(state, action.actor.x, action.actor.y);
+  if (!actor || actor.owner !== mover) {
+    throw new Error("拠点建設元に手番側の駒がありません。");
+  }
+
+  if (getSquare(state, action.to.x, action.to.y) || hasBaseAt(state, action.to.x, action.to.y)) {
+    throw new Error("拠点は空きマスにだけ建てられます。");
+  }
+
+  const actorDef = state.ruleset.pieces[actor.id];
+  const buildAction = (actorDef?.actions ?? []).find(candidate => candidate.kind === "buildBase" && candidate.baseType === action.baseType);
+  if (!buildAction || !getBaseDef(state, action.baseType)) {
+    throw new Error("この駒は指定された拠点を建設できません。");
+  }
+  const range = Math.max(1, Number(buildAction.range ?? 1));
+  if (chebyshevDistance(action.actor, action.to) > range || (action.actor.x === action.to.x && action.actor.y === action.to.y)) {
+    throw new Error("拠点建設先が範囲外です。");
+  }
+
+  const builtBase = createBaseFromAction(state, mover, action);
+  if (!Array.isArray(state.bases)) state.bases = [];
+  state.bases.push(builtBase);
+
+  return {
+    captured: null,
+    pieceBefore: { ...actor },
+    pieceAfter: { ...actor },
+    builtBase: { ...builtBase },
+    finalSquare: { ...action.to }
   };
 }
 
@@ -258,6 +300,7 @@ function cloneHistoryEntryLike(entry) {
     pieceBefore: entry.pieceBefore ? { ...entry.pieceBefore } : null,
     pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null,
     subEntries: entry.subEntries ? entry.subEntries.map(cloneHistoryEntryLike) : undefined,
+    builtBase: entry.builtBase ? { ...entry.builtBase } : null,
     turnStateBefore: cloneTurnState(entry.turnStateBefore),
     turnStateAfter: cloneTurnState(entry.turnStateAfter)
   };

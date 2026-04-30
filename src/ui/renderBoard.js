@@ -1,6 +1,7 @@
  
 import { findRoyal, isInCheck } from "../core/check.js";
 import { getSquare } from "../core/coordinates.js";
+import { findBaseAt } from "../core/base.js";
 
 export function renderBoard(boardElement, state, uiState) {
   setBoardCssVariables(boardElement, state);
@@ -40,6 +41,12 @@ export function renderBoard(boardElement, state, uiState) {
       if (sameSquare(lastMove?.to, { x, y })) square.classList.add("last-move-to");
       if (sameSquare(checkedRoyal, { x, y })) square.classList.add("royal-in-check");
 
+      const base = findBaseAt(state, x, y);
+      if (base) {
+        square.classList.add("base-square");
+        square.appendChild(createBaseElement(state, base));
+      }
+
       const piece = getSquare(state, x, y);
       if (piece?.owner === state.turn && state.status.type === "playing") {
         square.classList.add("active-turn-piece-square");
@@ -70,6 +77,15 @@ function setBoardCssVariables(boardElement, state) {
     target.style.setProperty("--board-width", state.board.width);
     target.style.setProperty("--board-height", state.board.height);
   }
+}
+
+function createBaseElement(state, base) {
+  const baseDef = state.ruleset.baseDefs?.[base.kind] ?? state.ruleset.bases?.[base.kind];
+  const element = document.createElement("span");
+  element.className = `base-marker ${base.owner}`;
+  element.textContent = baseDef?.display ?? base.kind;
+  element.title = `${base.owner === "black" ? "先手" : "後手"} ${baseDef?.name ?? base.kind}`;
+  return element;
 }
 
 function createPieceElement(state, piece, perspective) {
@@ -124,6 +140,10 @@ function getLastMove(state) {
     return { from: first?.from ?? null, to: last?.to ?? last?.from ?? null };
   }
 
+  if (entry.move.kind === "buildBase") {
+    return { from: entry.move.actor, to: entry.move.to };
+  }
+
   return null;
 }
 
@@ -139,8 +159,13 @@ function sameSquare(a, b) {
 }
 
 function createSquareLabel(state, x, y) {
+  const base = findBaseAt(state, x, y);
   const piece = getSquare(state, x, y);
-  if (!piece) return `${x + 1},${y + 1} 空きマス`;
+  if (!piece && !base) return `${x + 1},${y + 1} 空きマス`;
+  if (!piece && base) {
+    const baseDef = state.ruleset.baseDefs?.[base.kind] ?? state.ruleset.bases?.[base.kind];
+    return `${x + 1},${y + 1} ${base.owner === "black" ? "先手" : "後手"} ${baseDef?.name ?? base.kind}`;
+  }
 
   const owner = piece.owner === "black" ? "先手" : "後手";
   const pieceDef = state.ruleset.pieces[piece.id];

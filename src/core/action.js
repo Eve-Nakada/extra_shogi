@@ -1,5 +1,6 @@
 import { applyMove, applyMoveToClone } from "./applyMove.js";
-import { getSquare } from "./coordinates.js";
+import { getSquare, inBoard } from "./coordinates.js";
+import { hasBaseAt } from "./base.js";
 import { getLegalMoves, isBasicLegal, isSelectionAllowedByTurnState, leavesOwnRoyalInCheck } from "./legalMoveFilter.js";
 import { isExtraActionTurnState } from "./state.js";
 
@@ -13,6 +14,7 @@ export function getLegalActions(state, selection, options = {}) {
 
   if (selection?.kind === "board" && !isExtraActionTurnState(state.turnState)) {
     actions.push(...getLegalTransformActions(state, selection));
+    actions.push(...getLegalBuildBaseActions(state, selection));
     actions.push(...getLegalCompoundActions(state, selection, options));
   }
 
@@ -42,6 +44,39 @@ export function getLegalTransformActions(state, selection) {
 
     if (!leavesOwnRoyalInCheck(state, action)) {
       actions.push(action);
+    }
+  }
+
+  return actions;
+}
+
+export function getLegalBuildBaseActions(state, selection) {
+  const piece = getSquare(state, selection.x, selection.y);
+  if (!piece || piece.owner !== state.turn) return [];
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  const buildActions = (pieceDef?.actions ?? []).filter(action => action.kind === "buildBase");
+  const actions = [];
+
+  for (const build of buildActions) {
+    const range = Math.max(1, Number(build.range ?? 1));
+    for (let y = selection.y - range; y <= selection.y + range; y += 1) {
+      for (let x = selection.x - range; x <= selection.x + range; x += 1) {
+        if (x === selection.x && y === selection.y) continue;
+        if (!inBoard(x, y, state.board)) continue;
+        if (getSquare(state, x, y) || hasBaseAt(state, x, y)) continue;
+
+        const action = {
+          kind: "buildBase",
+          actor: { x: selection.x, y: selection.y },
+          baseType: build.baseType,
+          to: { x, y }
+        };
+
+        if (isBasicLegal(state, action) && !leavesOwnRoyalInCheck(state, action)) {
+          actions.push(action);
+        }
+      }
     }
   }
 

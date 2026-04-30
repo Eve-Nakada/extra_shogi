@@ -182,6 +182,10 @@ export function selectionFromMove(state, move) {
     return first ? selectionFromMove(state, first) : null;
   }
 
+  if (move.kind === "buildBase") {
+    return { kind: "board", x: move.actor?.x, y: move.actor?.y };
+  }
+
   return null;
 }
 
@@ -225,6 +229,16 @@ export function sameMove(a, b) {
     if (!Array.isArray(a.actions) || !Array.isArray(b.actions)) return false;
     if (a.actions.length !== b.actions.length) return false;
     return a.actions.every((action, index) => sameMove(action, b.actions[index]));
+  }
+
+  if (a.kind === "buildBase") {
+    return (
+      a.baseType === b.baseType &&
+      a.actor.x === b.actor.x &&
+      a.actor.y === b.actor.y &&
+      a.to.x === b.to.x &&
+      a.to.y === b.to.y
+    );
   }
 
   return false;

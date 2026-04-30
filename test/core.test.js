@@ -737,3 +737,66 @@ test("v1.8 compound actionは通信比較できる", () => {
     ]
   }), true);
 });
+
+test("v1.9 築城駒はbuildBase actionで御城を建てられる", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  put(state, "black", "T", 4, 8);
+
+  const build = getLegalActions(state, { kind: "board", x: 4, y: 8 })
+    .find(action => action.kind === "buildBase" && action.baseType === "castle" && action.to.x === 4 && action.to.y === 7);
+
+  assert.ok(build);
+  applyAction(state, build);
+
+  assert.equal(state.turn, "white");
+  assert.equal(state.bases.length, 1);
+  assert.equal(state.bases[0].kind, "castle");
+  assert.equal(state.bases[0].owner, "black");
+  assert.equal(state.history.at(-1).move.kind, "buildBase");
+  assert.equal(state.history.at(-1).builtBase.kind, "castle");
+});
+
+test("v1.9 拠点がある場合は自拠点周囲にだけ駒を打てる", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  state.hands.black.P = 1;
+  state.bases.push({
+    id: "black-castle-test",
+    owner: "black",
+    kind: "castle",
+    x: 4,
+    y: 8,
+    layer: "ground",
+    hp: null,
+    providesDropZone: true,
+    dropRadius: 1
+  });
+
+  const drops = getLegalMoves(state, { kind: "hand", owner: "black", pieceId: "P" });
+
+  assert.equal(drops.some(move => move.to.x === 3 && move.to.y === 8), true);
+  assert.equal(drops.some(move => move.to.x === 4 && move.to.y === 8), false);
+  assert.equal(drops.some(move => move.to.x === 0 && move.to.y === 5), false);
+});
+
+test("v1.9 自拠点がない拠点ルールでは初期陣内だけ駒を打てる", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  state.hands.black.P = 1;
+
+  const drops = getLegalMoves(state, { kind: "hand", owner: "black", pieceId: "P" });
+
+  assert.equal(drops.some(move => move.to.x === 4 && move.to.y === 8), true);
+  assert.equal(drops.some(move => move.to.x === 4 && move.to.y === 7), false);
+});
+
+test("v1.9 buildBase actionは通信比較できる", () => {
+  assert.equal(sameMove(
+    { kind: "buildBase", actor: { x: 4, y: 8 }, baseType: "castle", to: { x: 4, y: 7 }, id: null },
+    { kind: "buildBase", actor: { x: 4, y: 8 }, baseType: "castle", to: { x: 4, y: 7 }, id: null }
+  ), true);
+});

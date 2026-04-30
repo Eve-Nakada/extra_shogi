@@ -159,6 +159,9 @@ function summarizeActions(actions = []) {
     if (action.kind === "multiMove") {
       return `${action.count ?? 2}回行動${action.optionalStop ? "（途中停止可）" : ""}`;
     }
+    if (action.kind === "buildBase") {
+      return `${action.baseType ?? "拠点"}を周囲${action.range ?? 1}マスに建設`;
+    }
     return action.kind ?? "不明な特殊行動";
   }).join(" / ");
 }

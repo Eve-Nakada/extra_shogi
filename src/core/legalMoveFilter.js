@@ -3,6 +3,7 @@ import { isExtraActionTurnState } from "./state.js";
  
 import { applyMoveToClone } from "./applyMove.js";
 import { fromIndex, getSquare, inBoard } from "./coordinates.js";
+import { chebyshevDistance, getBaseDef, hasBaseAt, isDropAllowedByPolicy } from "./base.js";
 import { isInCheck } from "./check.js";
 import {
   canPromote,
@@ -72,6 +73,10 @@ export function isBasicLegal(state, move) {
     return isBasicCompoundLegal(state, move);
   }
 
+  if (move.kind === "buildBase") {
+    return isBasicBuildBaseLegal(state, move);
+  }
+
   return false;
 }
 
@@ -110,6 +115,8 @@ function isBasicBoardMoveLegal(state, move) {
   const piece = getSquare(state, move.from.x, move.from.y);
   if (!piece || piece.owner !== state.turn) return false;
 
+  if (hasBaseAt(state, move.to.x, move.to.y)) return false;
+
   const target = getSquare(state, move.to.x, move.to.y);
   if (target?.owner === state.turn) return false;
   if (target && !canCapture(state, piece, target, {
@@ -132,8 +139,10 @@ function isBasicBoardMoveLegal(state, move) {
 
 function isBasicDropLegal(state, move) {
   if (!inBoard(move.to.x, move.to.y, state.board)) return false;
-  if (getSquare(state, move.to.x, move.to.y)) return false;
+  if (getSquare(state, move.to.x, move.to.y) || hasBaseAt(state, move.to.x, move.to.y)) return false;
   if ((state.hands[state.turn][move.pieceId] ?? 0) <= 0) return false;
+
+  if (!isDropAllowedByPolicy(state, state.turn, move.to)) return false;
 
   const pieceDef = state.ruleset.pieces[move.pieceId];
   if (!pieceDef || pieceDef.droppable === false) return false;
@@ -207,6 +216,28 @@ function isBasicTriggerEffectLegal(state, action) {
 
   const targetDef = state.ruleset.pieces[targetPiece.id];
   return Boolean(targetDef?.promotesTo && targetDef.promotesTo === action.promoteTo && state.ruleset.pieces[action.promoteTo]);
+}
+
+function isBasicBuildBaseLegal(state, action) {
+  if (!inBoard(action.actor.x, action.actor.y, state.board)) return false;
+  if (!inBoard(action.to.x, action.to.y, state.board)) return false;
+
+  const actor = getSquare(state, action.actor.x, action.actor.y);
+  if (!actor || actor.owner !== state.turn) return false;
+  if (getSquare(state, action.to.x, action.to.y) || hasBaseAt(state, action.to.x, action.to.y)) return false;
+
+  const actorDef = state.ruleset.pieces[actor.id];
+  const buildAction = (actorDef?.actions ?? []).find(candidate => {
+    return candidate.kind === "buildBase" && candidate.baseType === action.baseType;
+  });
+  if (!buildAction) return false;
+  if (!getBaseDef(state, action.baseType)) return false;
+
+  const range = Math.max(1, Number(buildAction.range ?? 1));
+  if (chebyshevDistance(action.actor, action.to) > range) return false;
+  if (action.actor.x === action.to.x && action.actor.y === action.to.y) return false;
+
+  return true;
 }
 
 export function isSelectionAllowedByTurnState(state, selection) {
