@@ -1,3 +1,4 @@
+import { canCapture } from "./capture.js";
  
 import { applyMoveToClone } from "./applyMove.js";
 import { fromIndex, getSquare, inBoard } from "./coordinates.js";
@@ -97,6 +98,10 @@ function isBasicBoardMoveLegal(state, move) {
 
   const target = getSquare(state, move.to.x, move.to.y);
   if (target?.owner === state.turn) return false;
+  if (target && !canCapture(state, piece, target, {
+    attackerSquare: move.from,
+    defenderSquare: move.to
+  })) return false;
 
   const pieceDef = state.ruleset.pieces[piece.id];
   if (!pieceDef) return false;

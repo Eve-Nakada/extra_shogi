@@ -566,3 +566,57 @@ test("v1.5 持将棋点数は駒定義のpointを参照する", () => {
 
   assert.equal(calculateImpasseScore(state, "black"), STANDARD_SHOGI.pieces.PR.point + STANDARD_SHOGI.pieces.B.point + 3);
 });
+
+import { canCapture } from "../src/core/capture.js";
+import { pieceAttacksSquare } from "../src/core/check.js";
+
+test("v1.6 金剛は金属性を持つ駒以外には取られない", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  put(state, "black", "S", 4, 4);
+  put(state, "black", "G", 6, 4);
+  put(state, "white", "F", 5, 3);
+
+  const silverMoves = getLegalMoves(state, { kind: "board", x: 4, y: 4 });
+  const goldMoves = getLegalMoves(state, { kind: "board", x: 6, y: 4 });
+
+  assert.equal(pieceAttacksSquare(state, { owner: "black", id: "S" }, { x: 4, y: 4 }, { x: 5, y: 3 }), true);
+  assert.equal(silverMoves.some(move => move.to.x === 5 && move.to.y === 3), false);
+  assert.equal(goldMoves.some(move => move.to.x === 5 && move.to.y === 3), true);
+});
+
+test("v1.6 canCaptureはcaptureRulesのrequiredAttackerAttributeを評価する", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  const defender = { owner: "white", id: "F" };
+
+  assert.equal(canCapture(state, { owner: "black", id: "S" }, defender), false);
+  assert.equal(canCapture(state, { owner: "black", id: "G" }, defender), true);
+  assert.equal(canCapture(state, { owner: "black", id: "TO" }, defender), true);
+});
+
+test("v1.6 王手判定は実際に取れる場合だけ王手とする", () => {
+  const state = createEmptyState({
+    ...EXPANDED_SHOGI,
+    pieces: {
+      ...EXPANDED_SHOGI.pieces,
+      K: {
+        ...EXPANDED_SHOGI.pieces.K,
+        captureRules: [
+          { kind: "requiresAttackerAttribute", attribute: "goldLike" }
+        ]
+      }
+    }
+  });
+
+  put(state, "black", "K", 5, 5);
+  put(state, "white", "K", 0, 0);
+  put(state, "white", "R", 5, 0);
+
+  assert.equal(pieceAttacksSquare(state, { owner: "white", id: "R" }, { x: 5, y: 0 }, { x: 5, y: 5 }), true);
+  assert.equal(isInCheck(state, "black"), false);
+
+  setSquare(state, 5, 0, { owner: "white", id: "PR" });
+  assert.equal(isInCheck(state, "black"), true);
+});
+

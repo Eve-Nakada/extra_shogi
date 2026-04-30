@@ -43,9 +43,11 @@ function createExpandedInitialPieces() {
     { owner: "white", id: "M", x: 5, y: 1 },
     { owner: "white", id: "B", x: 9, y: 1 },
     { owner: "white", id: "W", x: 0, y: 2 },
+    { owner: "white", id: "F", x: 5, y: 2 },
     { owner: "white", id: "W", x: 10, y: 2 },
 
     { owner: "black", id: "W", x: 0, y: 8 },
+    { owner: "black", id: "F", x: 5, y: 8 },
     { owner: "black", id: "W", x: 10, y: 8 },
     { owner: "black", id: "B", x: 1, y: 9 },
     { owner: "black", id: "M", x: 5, y: 9 },
@@ -82,7 +84,7 @@ export const EXPANDED_SHOGI = {
     height: 11
   },
 
-  handOrder: ["R", "B", "M", "C", "W", "G", "S", "N", "L", "P"],
+  handOrder: ["R", "B", "M", "F", "C", "W", "G", "S", "N", "L", "P"],
 
   pieces: {
     ...STANDARD_SHOGI.pieces,
@@ -123,6 +125,21 @@ export const EXPANDED_SHOGI = {
       droppable: false,
       capturedAs: "C",
       moves: GOLD_MOVES
+    },
+
+    F: {
+      name: "金剛",
+      display: "剛",
+      description: "金属性を持つ駒以外には取られない特殊駒。捕獲制限の検証に使う。",
+      category: "special",
+      point: 4,
+      attributes: ["fortified"],
+      captureRules: [
+        { kind: "requiresAttackerAttribute", attribute: "goldLike" }
+      ],
+      droppable: true,
+      capturedAs: "F",
+      moves: KING_MOVES
     },
 
     W: {
