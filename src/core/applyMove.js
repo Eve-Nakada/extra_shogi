@@ -1,3 +1,4 @@
+ 
 import { cloneMove, cloneState, opposite } from "./state.js";
 import { getSquare, setSquare } from "./coordinates.js";
 
@@ -110,3 +111,5 @@ function addCapturedPieceToHand(state, owner, capturedPiece) {
 
   state.hands[owner][handPieceId] = (state.hands[owner][handPieceId] ?? 0) + 1;
 }
+ 
+ 

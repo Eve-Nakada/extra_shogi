@@ -1,3 +1,4 @@
+ 
 export function renderConnectionLog(element, log) {
   element.innerHTML = "";
 
@@ -39,3 +40,5 @@ function directionLabel(direction) {
   if (direction === "error") return "エラー";
   return "内部";
 }
+ 
+ 

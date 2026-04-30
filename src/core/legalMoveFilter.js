@@ -1,3 +1,4 @@
+ 
 import { applyMoveToClone } from "./applyMove.js";
 import { fromIndex, getSquare, inBoard } from "./coordinates.js";
 import { isInCheck } from "./check.js";
@@ -149,3 +150,5 @@ function hasUnpromotedPawnOnFile(state, owner, x, pieceId) {
 function shouldValidatePawnDropMate(options) {
   return options.validatePawnDropMate !== false;
 }
+ 
+ 

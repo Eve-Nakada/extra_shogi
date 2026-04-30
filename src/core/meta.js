@@ -1,3 +1,4 @@
+ 
 export function createDefaultMeta(now = new Date()) {
   const iso = now instanceof Date ? now.toISOString() : String(now);
   return {
@@ -49,3 +50,5 @@ function normalizeText(value, fallback) {
   if (value == null) return fallback;
   return String(value).trim();
 }
+ 
+ 

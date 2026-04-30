@@ -1,3 +1,4 @@
+ 
 import { STANDARD_SHOGI } from "./standardShogi.js";
 import { EXPANDED_SHOGI } from "./expandedShogi.js";
 
@@ -17,3 +18,5 @@ export function getRulesetById(rulesetId) {
   }
   return ruleset;
 }
+ 
+ 

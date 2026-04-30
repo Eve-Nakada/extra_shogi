@@ -1,3 +1,4 @@
+ 
 import { STANDARD_SHOGI } from "./standardShogi.js";
 
 const KING_MOVES = STANDARD_SHOGI.pieces.K.moves;
@@ -89,6 +90,10 @@ export const EXPANDED_SHOGI = {
     M: {
       name: "麒麟",
       display: "麒",
+      description: "玉の8方向1マスに加え、縦横2マスへ跳べる拡張駒。",
+      category: "special",
+      point: 3,
+      attributes: [],
       droppable: true,
       capturedAs: "M",
       moves: KIRIN_MOVES
@@ -97,6 +102,10 @@ export const EXPANDED_SHOGI = {
     C: {
       name: "銅将",
       display: "銅",
+      description: "前3方向と真後ろへ1マス動ける小駒。成ると成銅になる。",
+      category: "minor",
+      point: 1,
+      attributes: [],
       droppable: true,
       capturedAs: "C",
       promotesTo: "PC",
@@ -106,6 +115,10 @@ export const EXPANDED_SHOGI = {
     PC: {
       name: "成銅",
       display: "銅+",
+      description: "銅将が成った駒。金と同じ動きになり、金属性を持つ。",
+      category: "promoted",
+      point: 1,
+      attributes: ["promoted", "goldLike"],
       promoted: true,
       droppable: false,
       capturedAs: "C",
@@ -115,6 +128,10 @@ export const EXPANDED_SHOGI = {
     W: {
       name: "走兵",
       display: "走",
+      description: "前方へ直進し、左右へ1マス動ける拡張歩兵。成ると成走になる。",
+      category: "minor",
+      point: 1,
+      attributes: [],
       droppable: true,
       capturedAs: "W",
       promotesTo: "PW",
@@ -126,6 +143,10 @@ export const EXPANDED_SHOGI = {
     PW: {
       name: "成走",
       display: "走+",
+      description: "走兵が成った駒。金と同じ動きになり、金属性を持つ。",
+      category: "promoted",
+      point: 1,
+      attributes: ["promoted", "goldLike"],
       promoted: true,
       droppable: false,
       capturedAs: "W",
@@ -135,3 +156,5 @@ export const EXPANDED_SHOGI = {
 
   initialPieces: createExpandedInitialPieces()
 };
+ 
+ 

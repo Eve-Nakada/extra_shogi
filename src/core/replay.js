@@ -1,3 +1,4 @@
+ 
 import { applyMove } from "./applyMove.js";
 import { createInitialState, cloneMove } from "./state.js";
 
@@ -33,3 +34,5 @@ export function cloneHistoryEntry(entry) {
     pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null
   };
 }
+ 
+ 

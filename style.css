@@ -1679,3 +1679,123 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* v1.5 piece metadata guide */
+.piece-guide-content {
+  display: grid;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.piece-guide-intro {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.piece-guide-category h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.piece-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.piece-guide-card {
+  padding: 10px;
+  border: 1px solid #e1d4be;
+  border-radius: 9px;
+  background: #fdf8ed;
+}
+
+.piece-guide-card-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 6px;
+}
+
+.piece-guide-display {
+  min-width: 34px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #7b5625;
+  border-radius: 8px 8px 5px 5px;
+  background: #f9d990;
+  font-weight: 900;
+}
+
+.piece-guide-card strong,
+.piece-guide-meta {
+  display: block;
+}
+
+.piece-guide-meta {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.piece-guide-description {
+  margin: 0 0 8px;
+  color: #333;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.piece-guide-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.piece-guide-tag {
+  padding: 2px 6px;
+  border: 1px solid #d7c8aa;
+  border-radius: 999px;
+  background: #fffdf7;
+  color: #555;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.piece-guide-tag.gold-like {
+  border-color: #b08a25;
+  background: #fff3c4;
+  color: #5a3a16;
+}
+
+.piece-guide-details {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.piece-guide-details div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.piece-guide-details dt {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.piece-guide-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .piece-guide-intro {
+    grid-template-columns: 1fr;
+  }
+}

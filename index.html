@@ -11,9 +11,9 @@
   <main id="app" class="app">
     <header class="app-header compact-header">
       <div>
-        <p class="version-badge">v1.4 表示設定・拡張説明</p>
+        <p class="version-badge">v1.5 駒定義基盤</p>
         <h1>盤上ゲーム - 将棋HTML</h1>
-        <p class="note">表示設定保存・駒台視点連動・拡張説明 / ローカル対局・棋譜保存・軽量通信対戦対応</p>
+        <p class="note">駒定義メタ情報・属性・点数・説明自動生成 / ローカル対局・棋譜保存・軽量通信対戦対応</p>
       </div>
       <nav class="quick-nav" aria-label="画面内ナビゲーション">
         <a href="#board">盤面</a>
@@ -251,32 +251,8 @@
 
 
     <details id="piece-guide" class="definition-panel compact-panel">
-      <summary>駒の動かし方の説明</summary>
-      <div class="definition-grid">
-        <section>
-          <h3>移動定義</h3>
-          <p>駒の動きはルールセット内の <code>moves</code> 配列で定義します。今後駒を増やす場合も、UI側に個別の駒名や移動処理を書かず、駒定義だけを増やします。</p>
-          <dl class="definition-list">
-            <div><dt><code>step</code></dt><dd>指定方向へ1マス移動します。金・銀・玉などに使います。</dd></div>
-            <div><dt><code>slide</code></dt><dd>指定方向へ、駒や盤端に当たるまで直線移動します。飛・角・香などに使います。</dd></div>
-            <div><dt><code>jump</code></dt><dd>途中の駒を飛び越えて指定先へ移動します。桂馬や拡張駒に使います。</dd></div>
-          </dl>
-        </section>
-        <section>
-          <h3>方向指定</h3>
-          <p><code>dx</code> は横方向、<code>dy</code> は盤面そのものの縦方向、<code>fy</code> は自分から見た前方向です。先手と後手で前方向が反転する駒は <code>fy</code> を使います。</p>
-          <pre class="code-sample"><code>{ kind: "step", dx: 0, fy: 1 }
-{ kind: "slide", dx: 1, dy: 0 }
-{ kind: "jump", dx: -1, fy: 2 }</code></pre>
-        </section>
-        <section>
-          <h3>成り・持ち駒</h3>
-          <p>成駒は <code>promoted: true</code> の状態フラグではなく、別の駒IDとして扱います。取られたときは <code>capturedAs</code> を参照し、元の駒として持ち駒へ戻します。</p>
-          <pre class="code-sample"><code>P  -> TO
-R  -> PR
-TO.capturedAs = "P"</code></pre>
-        </section>
-      </div>
+      <summary>駒の動かし方・属性・点数</summary>
+      <div id="piece-guide-content" class="piece-guide-content" aria-live="polite"></div>
     </details>
 
     <details id="board-effect-guide" class="definition-panel compact-panel">

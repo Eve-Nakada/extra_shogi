@@ -1,4 +1,6 @@
+ 
 import { findRoyal } from "./check.js";
+import { getPiecePoint as getDefinedPiecePoint } from "./pieceMetadata.js";
 
 export const IMPASSE_POINT_THRESHOLD = 24;
 
@@ -74,10 +76,7 @@ export function isRoyalInEnemyCamp(state, player) {
 }
 
 export function getPiecePoint(state, pieceId) {
-  const pieceDef = state.ruleset.pieces[pieceId];
-  if (pieceDef?.royal) return 0;
-
-  const baseId = pieceDef?.capturedAs ?? pieceId;
-  if (baseId === "R" || baseId === "B") return 5;
-  return 1;
+  return getDefinedPiecePoint(state.ruleset, pieceId);
 }
+ 
+ 

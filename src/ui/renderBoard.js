@@ -1,3 +1,4 @@
+ 
 import { findRoyal, isInCheck } from "../core/check.js";
 import { getSquare } from "../core/coordinates.js";
 
@@ -131,3 +132,5 @@ function createSquareLabel(state, x, y) {
   const pieceDef = state.ruleset.pieces[piece.id];
   return `${x + 1},${y + 1} ${owner} ${pieceDef?.name ?? piece.id}`;
 }
+ 
+ 

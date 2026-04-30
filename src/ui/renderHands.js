@@ -1,3 +1,4 @@
+ 
 import { playerName } from "../core/state.js";
 
 export function renderHands(handElement, state, owner, uiState, options = {}) {
@@ -71,3 +72,5 @@ function isSelectedHand(uiState, owner, pieceId) {
     uiState.selected.pieceId === pieceId
   );
 }
+ 
+ 

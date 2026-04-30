@@ -1,3 +1,4 @@
+ 
 import { fromIndex, getSquare, inBoard } from "./coordinates.js";
 import { resolveDelta } from "./moveGenerator.js";
 
@@ -75,3 +76,5 @@ export function pieceAttacksSquare(state, piece, from, target) {
 
   return false;
 }
+ 
+ 

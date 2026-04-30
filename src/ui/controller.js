@@ -1,3 +1,4 @@
+ 
 import { applyMove } from "../core/applyMove.js";
 import { createClock, formatClockMs, getDisplayRemainingMs, pauseClock, startClock, switchClockAfterMove, updateClock } from "../core/clock.js";
 import { getSquare } from "../core/coordinates.js";
@@ -16,6 +17,7 @@ import { renderBoard } from "./renderBoard.js";
 import { renderHands } from "./renderHands.js";
 import { renderHistory } from "./renderHistory.js";
 import { renderConnectionLog } from "./renderConnectionLog.js";
+import { renderPieceGuide } from "./renderPieceGuide.js";
 import { loadViewPreferences, saveViewPreferences } from "./viewPreferences.js";
 
 const LOCAL_SAVE_KEY = "shogi-html:last-game";
@@ -701,6 +703,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     renderActionButtons();
     renderOnlinePanel();
     renderConnectionLog(elements.connectionLog, connectionLog);
+    renderPieceGuide(elements.pieceGuideContent, displayState.ruleset);
   }
 
   function renderPerspectiveHands(displayState) {
@@ -878,3 +881,5 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.message.textContent = message;
   }
 }
+ 
+ 
