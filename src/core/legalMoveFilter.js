@@ -1,4 +1,5 @@
 import { canCapture } from "./capture.js";
+import { isExtraActionTurnState } from "./state.js";
  
 import { applyMoveToClone } from "./applyMove.js";
 import { fromIndex, getSquare, inBoard } from "./coordinates.js";
@@ -13,6 +14,7 @@ import {
 
 export function getLegalMoves(state, selection, options = {}) {
   if (state.status.type !== "playing") return [];
+  if (!isSelectionAllowedByTurnState(state, selection)) return [];
 
   const pseudoMoves = generatePseudoMoves(state, selection);
 
@@ -64,6 +66,10 @@ export function isBasicLegal(state, move) {
 
   if (move.kind === "triggerEffect") {
     return isBasicTriggerEffectLegal(state, move);
+  }
+
+  if (move.kind === "compound") {
+    return isBasicCompoundLegal(state, move);
   }
 
   return false;
@@ -201,4 +207,24 @@ function isBasicTriggerEffectLegal(state, action) {
 
   const targetDef = state.ruleset.pieces[targetPiece.id];
   return Boolean(targetDef?.promotesTo && targetDef.promotesTo === action.promoteTo && state.ruleset.pieces[action.promoteTo]);
+}
+
+export function isSelectionAllowedByTurnState(state, selection) {
+  if (!isExtraActionTurnState(state.turnState)) return true;
+  if (selection?.kind !== "board") return false;
+  return selection.x === state.turnState.forcedPiece.x && selection.y === state.turnState.forcedPiece.y;
+}
+
+function isBasicCompoundLegal(state, action) {
+  if (!Array.isArray(action.actions) || action.actions.length < 2) return false;
+  if (isExtraActionTurnState(state.turnState)) return false;
+
+  let view = state;
+  for (const subAction of action.actions) {
+    if (subAction.kind !== "move") return false;
+    if (!isBasicBoardMoveLegal(view, subAction)) return false;
+    view = applyMoveToClone(view, subAction, { updateTurn: false, updateHistory: false });
+  }
+
+  return true;
 }

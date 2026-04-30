@@ -1,4 +1,5 @@
 import { getSquare, setSquare } from "./coordinates.js";
+import { cloneTurnState, createDefaultTurnState } from "./state.js";
 
 export function undoLastMove(state) {
   const entry = state.history.pop();
@@ -10,6 +11,7 @@ export function undoLastMove(state) {
     reason: null
   };
   state.turn = entry.turn;
+  state.turnState = cloneTurnState(entry.turnStateBefore ?? createDefaultTurnState());
 
   if (entry.move.kind === "move") {
     undoBoardMove(state, entry);
@@ -28,6 +30,11 @@ export function undoLastMove(state) {
 
   if (entry.move.kind === "triggerEffect") {
     undoTriggerEffectAction(state, entry);
+    return true;
+  }
+
+  if (entry.move.kind === "compound") {
+    undoCompoundAction(state, entry);
     return true;
   }
 
@@ -94,4 +101,19 @@ function removeCapturedPieceFromHand(state, owner, capturedPiece) {
   }
 
   state.hands[owner][handPieceId] = count - 1;
+}
+
+function undoCompoundAction(state, entry) {
+  const subEntries = Array.isArray(entry.subEntries) ? entry.subEntries : [];
+  for (const subEntry of [...subEntries].reverse()) {
+    if (subEntry.move.kind === "move") {
+      undoBoardMove(state, subEntry);
+    } else if (subEntry.move.kind === "drop") {
+      undoDropMove(state, subEntry);
+    } else if (subEntry.move.kind === "transform") {
+      undoTransformAction(state, subEntry);
+    } else if (subEntry.move.kind === "triggerEffect") {
+      undoTriggerEffectAction(state, subEntry);
+    }
+  }
 }

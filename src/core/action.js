@@ -1,16 +1,19 @@
-import { applyMove } from "./applyMove.js";
+import { applyMove, applyMoveToClone } from "./applyMove.js";
 import { getSquare } from "./coordinates.js";
-import { getLegalMoves, isBasicLegal, leavesOwnRoyalInCheck } from "./legalMoveFilter.js";
+import { getLegalMoves, isBasicLegal, isSelectionAllowedByTurnState, leavesOwnRoyalInCheck } from "./legalMoveFilter.js";
+import { isExtraActionTurnState } from "./state.js";
 
 export function getLegalActions(state, selection, options = {}) {
   if (state.status.type !== "playing") return [];
+  if (!isSelectionAllowedByTurnState(state, selection)) return [];
 
   const actions = [
     ...getLegalMoves(state, selection, options)
   ];
 
-  if (selection?.kind === "board") {
+  if (selection?.kind === "board" && !isExtraActionTurnState(state.turnState)) {
     actions.push(...getLegalTransformActions(state, selection));
+    actions.push(...getLegalCompoundActions(state, selection, options));
   }
 
   return actions;
@@ -45,8 +48,42 @@ export function getLegalTransformActions(state, selection) {
   return actions;
 }
 
+export function getLegalCompoundActions(state, selection, options = {}) {
+  const piece = getSquare(state, selection.x, selection.y);
+  if (!piece || piece.owner !== state.turn) return [];
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  const multiMove = (pieceDef?.actions ?? []).find(action => action.kind === "multiMove" && Number(action.count ?? 1) >= 2);
+  if (!multiMove) return [];
+
+  const firstMoves = getLegalMoves(state, selection, options).filter(action => action.kind === "move");
+  const compounds = [];
+
+  for (const first of firstMoves) {
+    const afterFirst = applyMoveToClone(state, first, { updateTurn: false, updateHistory: false });
+    const secondSelection = { kind: "board", x: first.to.x, y: first.to.y };
+    const secondMoves = getLegalMoves(afterFirst, secondSelection, options).filter(action => action.kind === "move");
+
+    for (const second of secondMoves) {
+      if (multiMove.allowCaptureOnSecond === false && getSquare(afterFirst, second.to.x, second.to.y)) continue;
+
+      const compound = {
+        kind: "compound",
+        actions: [first, second]
+      };
+
+      if (isBasicLegal(state, compound) && !leavesOwnRoyalInCheck(state, compound)) {
+        compounds.push(compound);
+      }
+    }
+  }
+
+  return dedupeCompoundActions(compounds);
+}
+
 export function getAvailableTriggeredActions(state, player = state.turn) {
   if (state.status.type !== "playing") return [];
+  if (isExtraActionTurnState(state.turnState)) return [];
 
   const actions = [];
 
@@ -101,4 +138,16 @@ function createPromoteNearbyActions(state, player, source, effect) {
   }
 
   return actions;
+}
+
+function dedupeCompoundActions(actions) {
+  const seen = new Set();
+  const result = [];
+  for (const action of actions) {
+    const key = JSON.stringify(action);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(action);
+  }
+  return result;
 }

@@ -104,6 +104,7 @@ function createPieceCard(ruleset, pieceId, pieceDef) {
   appendDetail(details, "捕獲制限", summarizeCaptureRules(pieceDef.captureRules));
   appendDetail(details, "変身", summarizeTransformOptions(ruleset, pieceDef.transformOptions));
   appendDetail(details, "効果", summarizeEffects(pieceDef.effects));
+  appendDetail(details, "特殊行動", summarizeActions(pieceDef.actions));
   appendDetail(details, "移動", summarizeMoves(pieceDef.moves));
 
   card.append(head, description, tags, details);
@@ -145,6 +146,19 @@ function summarizeEffects(effects = []) {
     if (effect.kind === "promoteNearby") {
       return `周囲${effect.radius ?? 1}マスの駒を成らせる`;
     }
+    if (effect.kind === "extraActionOnCapture") {
+      return `捕獲時に追加行動×${effect.actionCount ?? 1}`;
+    }
     return effect.kind ?? "不明な効果";
+  }).join(" / ");
+}
+
+function summarizeActions(actions = []) {
+  if (!actions.length) return "なし";
+  return actions.map(action => {
+    if (action.kind === "multiMove") {
+      return `${action.count ?? 2}回行動${action.optionalStop ? "（途中停止可）" : ""}`;
+    }
+    return action.kind ?? "不明な特殊行動";
   }).join(" / ");
 }

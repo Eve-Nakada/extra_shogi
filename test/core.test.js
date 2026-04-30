@@ -666,3 +666,74 @@ test("v1.7 promoteNearbyのtriggered actionで周囲の駒を成らせる", () =
   assert.deepEqual(getSquare(state, 5, 8), { owner: "black", id: "PA" });
   assert.equal(state.turn, "white");
 });
+
+test("v1.8 追撃駒は捕獲後に同じ駒だけ追加行動できる", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  put(state, "black", "Q", 4, 4);
+  put(state, "black", "P", 0, 7);
+  put(state, "white", "P", 5, 3);
+
+  const capture = getLegalActions(state, { kind: "board", x: 4, y: 4 })
+    .find(action => action.kind === "move" && action.to.x === 5 && action.to.y === 3);
+
+  assert.ok(capture);
+  applyAction(state, capture);
+
+  assert.equal(state.turn, "black");
+  assert.equal(state.turnState.phase, "extraAction");
+  assert.deepEqual(state.turnState.forcedPiece, { x: 5, y: 3 });
+  assert.deepEqual(getLegalMoves(state, { kind: "board", x: 0, y: 7 }), []);
+
+  const extraMove = getLegalMoves(state, { kind: "board", x: 5, y: 3 })
+    .find(action => action.to.x === 5 && action.to.y === 2);
+  assert.ok(extraMove);
+  applyAction(state, extraMove);
+
+  assert.equal(state.turn, "white");
+  assert.equal(state.turnState.phase, "normal");
+  assert.deepEqual(getSquare(state, 5, 2), { owner: "black", id: "Q" });
+});
+
+test("v1.8 二動駒はcompound actionで1手内に2回動ける", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  put(state, "black", "D", 4, 8);
+
+  const compound = getLegalActions(state, { kind: "board", x: 4, y: 8 })
+    .find(action => action.kind === "compound" &&
+      action.actions[0].to.x === 4 && action.actions[0].to.y === 7 &&
+      action.actions[1].to.x === 4 && action.actions[1].to.y === 6);
+
+  assert.ok(compound);
+  applyAction(state, compound);
+
+  assert.equal(state.turn, "white");
+  assert.equal(state.history.length, 1);
+  assert.equal(state.history[0].move.kind, "compound");
+  assert.equal(state.history[0].subEntries.length, 2);
+  assert.deepEqual(getSquare(state, 4, 6), { owner: "black", id: "D" });
+});
+
+test("v1.8 compound actionは通信比較できる", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  put(state, "black", "D", 4, 8);
+
+  const compound = getLegalActions(state, { kind: "board", x: 4, y: 8 })
+    .find(action => action.kind === "compound" &&
+      action.actions[0].to.x === 4 && action.actions[0].to.y === 7 &&
+      action.actions[1].to.x === 4 && action.actions[1].to.y === 6);
+
+  assert.ok(compound);
+  assert.equal(sameMove(compound, {
+    kind: "compound",
+    actions: [
+      { kind: "move", from: { x: 4, y: 8 }, to: { x: 4, y: 7 }, promoteTo: null },
+      { kind: "move", from: { x: 4, y: 7 }, to: { x: 4, y: 6 }, promoteTo: null }
+    ]
+  }), true);
+});

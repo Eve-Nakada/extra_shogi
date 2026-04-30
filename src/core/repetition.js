@@ -14,9 +14,14 @@ export function createPositionHash(state) {
     .map(player => `${player}:${formatHand(state.hands[player] ?? {})}`)
     .join("|");
 
+  const turnStatePart = state.turnState?.phase === "extraAction"
+    ? `extra:${state.turnState.forcedPiece?.x},${state.turnState.forcedPiece?.y}:${state.turnState.remainingActions}`
+    : "normal";
+
   return [
     `ruleset=${state.rulesetId}`,
     `turn=${state.turn}`,
+    `turnState=${turnStatePart}`,
     `board=${boardPart}`,
     `hands=${handPart}`
   ].join(";");

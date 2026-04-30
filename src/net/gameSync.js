@@ -177,6 +177,11 @@ export function selectionFromMove(state, move) {
     return { kind: "board", x: move.source?.x, y: move.source?.y };
   }
 
+  if (move.kind === "compound") {
+    const first = move.actions?.[0];
+    return first ? selectionFromMove(state, first) : null;
+  }
+
   return null;
 }
 
@@ -214,6 +219,12 @@ export function sameMove(a, b) {
       a.target.y === b.target.y &&
       a.promoteTo === b.promoteTo
     );
+  }
+
+  if (a.kind === "compound") {
+    if (!Array.isArray(a.actions) || !Array.isArray(b.actions)) return false;
+    if (a.actions.length !== b.actions.length) return false;
+    return a.actions.every((action, index) => sameMove(action, b.actions[index]));
   }
 
   return false;
