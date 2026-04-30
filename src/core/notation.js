@@ -1,4 +1,5 @@
 import { playerName } from "./state.js";
+import { normalizeGameMeta, playerDisplayNameFromMeta } from "./meta.js";
 
 export function formatHistoryEntry(entry, ruleset, index = null) {
   const prefix = index == null ? "" : `${index + 1}. `;
@@ -20,6 +21,118 @@ export function formatHistoryEntry(entry, ruleset, index = null) {
   return `${prefix}${turn} 未知の指し手`;
 }
 
+export function createTextGameRecord(state) {
+  const meta = normalizeGameMeta(state.meta);
+  const lines = [];
+  lines.push("# shogi-html 棋譜");
+  lines.push(`表題：${meta.title || "無題の対局"}`);
+  lines.push(`ルール：${state.ruleset.name ?? state.rulesetId}`);
+  lines.push(`先手：${meta.blackName || "先手"}`);
+  lines.push(`後手：${meta.whiteName || "後手"}`);
+  if (meta.eventName) lines.push(`棋戦：${meta.eventName}`);
+  if (meta.location) lines.push(`場所：${meta.location}`);
+  if (meta.startedAt) lines.push(`開始日時：${formatDateTime(meta.startedAt)}`);
+  if (meta.endedAt) lines.push(`終了日時：${formatDateTime(meta.endedAt)}`);
+  lines.push(`手数：${state.history.length}`);
+  lines.push(`結果：${formatResult(state)}`);
+  if (meta.notes) lines.push(`備考：${meta.notes}`);
+  lines.push("");
+  lines.push("手数  指手");
+
+  state.history.forEach((entry, index) => {
+    lines.push(`${String(index + 1).padStart(3, " ")}  ${formatHistoryEntryForText(entry, state.ruleset, state.meta)}`);
+  });
+
+  lines.push("");
+  lines.push(`終局：${formatResult(state)}`);
+  return lines.join("\n");
+}
+
+export function createKifLikeGameRecord(state) {
+  const meta = normalizeGameMeta(state.meta);
+  const lines = [];
+  lines.push(`#KIF version=shogi-html-v1`);
+  lines.push(`表題：${meta.title || "無題の対局"}`);
+  lines.push(`棋戦：${meta.eventName || "-"}`);
+  lines.push(`場所：${meta.location || "-"}`);
+  lines.push(`開始日時：${formatDateTime(meta.startedAt)}`);
+  if (meta.endedAt) lines.push(`終了日時：${formatDateTime(meta.endedAt)}`);
+  lines.push(`手合割：平手`);
+  lines.push(`先手：${meta.blackName || "先手"}`);
+  lines.push(`後手：${meta.whiteName || "後手"}`);
+  lines.push("手数----指手---------消費時間--");
+
+  state.history.forEach((entry, index) => {
+    lines.push(`${String(index + 1).padStart(4, " ")} ${formatKifLikeMove(entry, state.ruleset)}`);
+  });
+
+  lines.push(`まで${state.history.length}手で${formatResult(state)}`);
+  if (meta.notes) lines.push(`備考：${meta.notes}`);
+  return lines.join("\n");
+}
+
 export function formatSquare(square) {
   return `${square.x + 1},${square.y + 1}`;
+}
+
+function formatHistoryEntryForText(entry, ruleset, meta) {
+  const player = playerDisplayNameFromMeta(meta, entry.turn);
+
+  if (entry.move.kind === "drop") {
+    const pieceDef = ruleset.pieces[entry.move.pieceId];
+    return `${player} ${formatSquare(entry.move.to)} ${pieceDef?.display ?? entry.move.pieceId}打`;
+  }
+
+  if (entry.move.kind === "move") {
+    const pieceId = entry.pieceBefore?.id ?? entry.move.promoteTo ?? "?";
+    const pieceDef = ruleset.pieces[pieceId];
+    const capture = entry.captured ? " 同" : "";
+    const promote = entry.move.promoteTo ? "成" : "";
+    return `${player} ${formatSquare(entry.move.from)} -> ${formatSquare(entry.move.to)} ${pieceDef?.display ?? pieceId}${capture}${promote}`;
+  }
+
+  return `${player} 未知の指し手`;
+}
+
+function formatKifLikeMove(entry, ruleset) {
+  if (entry.move.kind === "drop") {
+    const pieceDef = ruleset.pieces[entry.move.pieceId];
+    return `${formatJapaneseSquare(entry.move.to)}${pieceDef?.display ?? entry.move.pieceId}打`;
+  }
+
+  if (entry.move.kind === "move") {
+    const pieceId = entry.pieceBefore?.id ?? entry.move.promoteTo ?? "?";
+    const pieceDef = ruleset.pieces[pieceId];
+    const promote = entry.move.promoteTo ? "成" : "";
+    const from = `(${entry.move.from.x + 1}${entry.move.from.y + 1})`;
+    return `${formatJapaneseSquare(entry.move.to)}${pieceDef?.display ?? pieceId}${promote}${from}`;
+  }
+
+  return "未知の指し手";
+}
+
+function formatJapaneseSquare(square) {
+  const files = ["１", "２", "３", "４", "５", "６", "７", "８", "９", "10", "11", "12", "13", "14", "15"];
+  const ranks = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二", "十三", "十四", "十五"];
+  return `${files[square.x] ?? square.x + 1}${ranks[square.y] ?? square.y + 1}`;
+}
+
+function formatResult(state) {
+  const status = state.status ?? {};
+  if (status.type !== "ended") return "対局中";
+  if (status.reason === "sennichite") return "千日手引き分け";
+  if (status.reason === "impasse" && !status.winner) return "持将棋引き分け";
+  if (status.reason === "perpetual_check") return `${playerDisplayNameFromMeta(state.meta, status.winner)}勝ち（連続王手の千日手）`;
+  if (status.reason === "impasse") return `${playerDisplayNameFromMeta(state.meta, status.winner)}勝ち（持将棋）`;
+  if (status.reason === "time") return `${playerDisplayNameFromMeta(state.meta, status.winner)}勝ち（時間切れ）`;
+  if (status.reason === "resign") return `${playerDisplayNameFromMeta(state.meta, status.winner)}勝ち（投了）`;
+  if (status.reason === "checkmate") return `${playerDisplayNameFromMeta(state.meta, status.winner)}勝ち（詰み）`;
+  return status.winner ? `${playerDisplayNameFromMeta(state.meta, status.winner)}勝ち` : "終局";
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("ja-JP", { hour12: false });
 }

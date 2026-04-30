@@ -35,6 +35,37 @@
       </div>
     </section>
 
+    <section class="meta-panel" aria-label="対局メタ情報">
+      <div class="meta-header">
+        <h2>対局メタ情報</h2>
+        <div class="toolbar-group">
+          <button id="export-text-button" class="action-button" type="button">棋譜テキスト書出</button>
+          <button id="copy-text-button" class="action-button" type="button">棋譜テキストコピー</button>
+        </div>
+      </div>
+      <div class="meta-grid">
+        <label class="field-label vertical" for="meta-title">表題
+          <input id="meta-title" class="text-input" type="text" placeholder="例：練習対局">
+        </label>
+        <label class="field-label vertical" for="meta-black-name">先手名
+          <input id="meta-black-name" class="text-input" type="text" placeholder="先手">
+        </label>
+        <label class="field-label vertical" for="meta-white-name">後手名
+          <input id="meta-white-name" class="text-input" type="text" placeholder="後手">
+        </label>
+        <label class="field-label vertical" for="meta-event-name">棋戦・イベント
+          <input id="meta-event-name" class="text-input" type="text" placeholder="任意">
+        </label>
+        <label class="field-label vertical" for="meta-location">場所
+          <input id="meta-location" class="text-input" type="text" placeholder="任意">
+        </label>
+        <label class="field-label vertical meta-notes-field" for="meta-notes">備考
+          <textarea id="meta-notes" class="meta-notes" placeholder="任意"></textarea>
+        </label>
+      </div>
+      <textarea id="text-record-output" class="text-record-output" readonly placeholder="棋譜テキスト書出またはコピー時に、ここへ出力されます"></textarea>
+    </section>
+
     <section class="clock-panel" aria-label="持ち時間設定">
       <div class="clock-header">
         <h2>持ち時間</h2>
