@@ -5,7 +5,7 @@ import { applyMove } from "../src/core/applyMove.js";
 import { getSquare, setSquare } from "../src/core/coordinates.js";
 import { isInCheck } from "../src/core/check.js";
 import { getLegalMoves } from "../src/core/legalMoveFilter.js";
-import { serializeGameRecord, parseGameRecord, restoreGameRecord } from "../src/core/record.js";
+import { serializeGameRecord, parseGameRecord, restoreGameRecord, createGameRecord } from "../src/core/record.js";
 import { replayHistory } from "../src/core/replay.js";
 import { createInitialState } from "../src/core/state.js";
 import { undoLastMove } from "../src/core/undo.js";
@@ -14,6 +14,8 @@ import { parseSignal, summarizeSignal, canAcceptSignalForCurrentSession } from "
 import { EXPANDED_SHOGI } from "../src/rulesets/expandedShogi.js";
 import { RULESET_BY_ID } from "../src/rulesets/index.js";
 import { STANDARD_SHOGI } from "../src/rulesets/standardShogi.js";
+import { createKifLikeGameRecord, createTextGameRecord } from "../src/core/notation.js";
+import { normalizeGameMeta } from "../src/core/meta.js";
 import { createConnectionLog, addConnectionLog, summarizeMessage, createSnapshotText } from "../src/net/connectionLog.js";
 
 function createEmptyState(ruleset = STANDARD_SHOGI) {
@@ -422,3 +424,59 @@ test("双方の玉が敵陣に入り24点以上なら持将棋は引き分けに
   assert.equal(status.winner, null);
 });
 
+
+
+test("v0.9 JSON保存データは対局メタ情報を保持して復元できる", () => {
+  const state = createInitialState(STANDARD_SHOGI);
+  state.meta = normalizeGameMeta({
+    title: "テスト対局",
+    blackName: "Alice",
+    whiteName: "Bob",
+    eventName: "v0.9検証",
+    location: "Tokyo",
+    startedAt: "2026-04-30T00:00:00.000Z",
+    notes: "metadata test"
+  });
+
+  applyMove(state, getLegalMoves(state, { kind: "board", x: 4, y: 6 })[0]);
+
+  const record = parseGameRecord(serializeGameRecord(state));
+  const restored = restoreGameRecord(record, RULESET_BY_ID);
+
+  assert.equal(record.meta.title, "テスト対局");
+  assert.equal(record.meta.blackName, "Alice");
+  assert.equal(restored.meta.whiteName, "Bob");
+  assert.equal(restored.meta.eventName, "v0.9検証");
+});
+
+test("v0.9 棋譜テキスト出力はメタ情報と指し手を含む", () => {
+  const state = createInitialState(STANDARD_SHOGI);
+  state.meta = normalizeGameMeta({
+    title: "棋譜出力テスト",
+    blackName: "先手太郎",
+    whiteName: "後手花子",
+    startedAt: "2026-04-30T00:00:00.000Z"
+  });
+  applyMove(state, getLegalMoves(state, { kind: "board", x: 4, y: 6 })[0]);
+
+  const text = createTextGameRecord(state);
+  const kif = createKifLikeGameRecord(state);
+
+  assert.equal(text.includes("表題：棋譜出力テスト"), true);
+  assert.equal(text.includes("先手太郎"), true);
+  assert.equal(text.includes("後手花子"), true);
+  assert.equal(kif.includes("#KIF version=shogi-html-v1"), true);
+  assert.equal(kif.includes("先手：先手太郎"), true);
+  assert.equal(kif.includes("   1 "), true);
+});
+
+test("v0.9 createGameRecordは局面診断とメタ情報を同時に出力する", () => {
+  const state = createInitialState(STANDARD_SHOGI);
+  state.meta = normalizeGameMeta({ title: "診断つき保存" });
+  const record = createGameRecord(state);
+
+  assert.equal(record.meta.title, "診断つき保存");
+  assert.equal(typeof record.positionHash, "string");
+  assert.equal(record.repetition.repeated, false);
+  assert.equal(typeof record.impasse.ready, "boolean");
+});

@@ -4,6 +4,8 @@ import { getSquare } from "../core/coordinates.js";
 import { createStatusText, declareImpasse, isCurrentTurnInCheck, resign, updateGameStatus } from "../core/gameStatus.js";
 import { getLegalMoves } from "../core/legalMoveFilter.js";
 import { parseGameRecord, restoreGameRecord, serializeGameRecord } from "../core/record.js";
+import { createKifLikeGameRecord } from "../core/notation.js";
+import { completeGameMeta, normalizeGameMeta } from "../core/meta.js";
 import { replayHistory } from "../core/replay.js";
 import { opposite, playerName } from "../core/state.js";
 import { undoLastMove } from "../core/undo.js";
@@ -93,6 +95,16 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       if (button) setReplayIndex(Number(button.dataset.index) + 1);
     });
 
+    for (const input of getMetaInputs()) {
+      input.addEventListener("input", () => {
+        syncMetaFromInputs();
+        renderTextRecordPreview();
+      });
+    }
+
+    elements.exportTextButton.addEventListener("click", exportTextRecord);
+    elements.copyTextButton.addEventListener("click", copyTextRecord);
+
     elements.rulesetSelect.addEventListener("change", () => {
       if (onlineSession.isOnlineMode()) {
         elements.rulesetSelect.value = currentRulesetId;
@@ -162,6 +174,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     });
 
     elements.saveLocalButton.addEventListener("click", () => {
+      syncMetaFromInputs();
       window.localStorage.setItem(LOCAL_SAVE_KEY, serializeGameRecord(state));
       setMessage("ローカル保存しました。ブラウザ内のlocalStorageに保存されています。");
     });
@@ -363,7 +376,82 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     }
   }
 
+  function getMetaInputs() {
+    return [
+      elements.metaTitle,
+      elements.metaBlackName,
+      elements.metaWhiteName,
+      elements.metaEventName,
+      elements.metaLocation,
+      elements.metaNotes
+    ];
+  }
+
+  function syncMetaFromInputs() {
+    state.meta = normalizeGameMeta({
+      ...state.meta,
+      title: elements.metaTitle.value,
+      blackName: elements.metaBlackName.value,
+      whiteName: elements.metaWhiteName.value,
+      eventName: elements.metaEventName.value,
+      location: elements.metaLocation.value,
+      notes: elements.metaNotes.value
+    });
+  }
+
+  function renderMetaPanel() {
+    const meta = normalizeGameMeta(state.meta);
+    if (document.activeElement !== elements.metaTitle) elements.metaTitle.value = meta.title;
+    if (document.activeElement !== elements.metaBlackName) elements.metaBlackName.value = meta.blackName;
+    if (document.activeElement !== elements.metaWhiteName) elements.metaWhiteName.value = meta.whiteName;
+    if (document.activeElement !== elements.metaEventName) elements.metaEventName.value = meta.eventName;
+    if (document.activeElement !== elements.metaLocation) elements.metaLocation.value = meta.location;
+    if (document.activeElement !== elements.metaNotes) elements.metaNotes.value = meta.notes;
+  }
+
+  function renderTextRecordPreview() {
+    elements.textRecordOutput.value = createKifLikeGameRecord(state);
+  }
+
+  function exportTextRecord() {
+    syncMetaFromInputs();
+    if (state.status.type === "ended") {
+      state.meta = completeGameMeta(state.meta);
+    }
+    const text = createKifLikeGameRecord(state);
+    elements.textRecordOutput.value = text;
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    const title = safeFileName(state.meta?.title || state.rulesetId);
+    anchor.href = url;
+    anchor.download = "shogi-html-" + title + "-" + date + ".kif.txt";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setMessage("棋譜テキストを書き出しました。");
+  }
+
+  async function copyTextRecord() {
+    syncMetaFromInputs();
+    const text = createKifLikeGameRecord(state);
+    elements.textRecordOutput.value = text;
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage("棋譜テキストをクリップボードへコピーしました。");
+    } catch (error) {
+      elements.textRecordOutput.select();
+      setMessage("クリップボードコピーに失敗しました。棋譜テキスト欄を手動コピーしてください。");
+    }
+  }
+
+  function safeFileName(value) {
+    return String(value || "game").replace(/[\\/:*?"<>|\s]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "game";
+  }
   function exportCurrentGame() {
+    syncMetaFromInputs();
     const text = serializeGameRecord(state);
     const blob = new Blob([text], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -530,6 +618,8 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.status.textContent = createDisplayStatusText(displayState);
     elements.status.classList.toggle("check", isCurrentTurnInCheck(displayState));
 
+    renderMetaPanel();
+    renderTextRecordPreview();
     renderClockPanel();
     renderActionButtons();
     renderOnlinePanel();
