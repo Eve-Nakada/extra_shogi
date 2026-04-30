@@ -2,7 +2,7 @@ import { setSquare } from "./coordinates.js";
 import { cloneClock } from "./clock.js";
 import { cloneBases } from "./base.js";
 import { createDefaultMeta, cloneGameMeta } from "./meta.js";
-import { createSetupState, cloneSetup } from "./setup.js";
+import { createSetupState, cloneSetup, cloneInitialPositionSnapshot } from "./setup.js";
 
 export function createInitialState(ruleset) {
   const width = ruleset.board.width;
@@ -18,6 +18,7 @@ export function createInitialState(ruleset) {
     },
     phase: ruleset.setup?.enabled ? "setup" : "playing",
     setup: createSetupState(ruleset),
+    initialPosition: null,
     turn: ruleset.firstTurn ?? ruleset.players[0],
     hands: createEmptyHands(ruleset),
     bases: cloneBases(ruleset.initialBases ?? []),
@@ -63,6 +64,7 @@ export function cloneState(state) {
     },
     phase: state.phase ?? "playing",
     setup: cloneSetup(state.setup),
+    initialPosition: cloneInitialPositionSnapshot(state.initialPosition ?? state.setup?.initialPosition),
     turn: state.turn,
     hands: cloneHands(state.hands),
     bases: cloneBases(state.bases),

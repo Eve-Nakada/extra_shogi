@@ -1,5 +1,6 @@
 import { summarizeCaptureRules } from "../core/capture.js";
 import { getPieceAttributeLabel, getPieceCategoryLabel } from "../core/pieceMetadata.js";
+import { resolveDelta } from "../core/moveGenerator.js";
 
 export function renderPieceGuide(container, ruleset) {
   if (!container || !ruleset) return;
@@ -62,7 +63,7 @@ function groupPieces(ruleset) {
   return [...map.entries()].sort((a, b) => categoryOrder.indexOf(a[0]) - categoryOrder.indexOf(b[0]));
 }
 
-function createPieceCard(ruleset, pieceId, pieceDef) {
+export function createPieceCard(ruleset, pieceId, pieceDef) {
   const card = document.createElement("article");
   card.className = "piece-guide-card";
 
@@ -107,7 +108,8 @@ function createPieceCard(ruleset, pieceId, pieceDef) {
   appendDetail(details, "特殊行動", summarizeActions(pieceDef.actions));
   appendDetail(details, "移動", summarizeMoves(pieceDef.moves));
 
-  card.append(head, description, tags, details);
+  const diagram = createMoveDiagram(pieceDef);
+  card.append(head, description, diagram, tags, details);
   return card;
 }
 
@@ -164,4 +166,72 @@ function summarizeActions(actions = []) {
     }
     return action.kind ?? "不明な特殊行動";
   }).join(" / ");
+}
+
+export function renderSelectedPieceGuide(container, state, selection) {
+  if (!container) return;
+  container.innerHTML = "";
+  if (!selection || selection.kind !== "board") {
+    container.hidden = true;
+    return;
+  }
+  const piece = state.board.squares[selection.y * state.board.width + selection.x];
+  if (!piece) {
+    container.hidden = true;
+    return;
+  }
+  const pieceDef = state.ruleset.pieces[piece.id];
+  if (!pieceDef) {
+    container.hidden = true;
+    return;
+  }
+  container.hidden = false;
+  const heading = document.createElement("h3");
+  heading.textContent = "選択中の駒説明";
+  container.appendChild(heading);
+  container.appendChild(createPieceCard(state.ruleset, piece.id, pieceDef));
+}
+
+function createMoveDiagram(pieceDef) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "move-diagram";
+  wrapper.setAttribute("aria-label", "駒の動き図");
+  const size = 7;
+  const center = Math.floor(size / 2);
+  const cells = Array.from({ length: size * size }, () => ({ step: false, jump: false, slide: false }));
+
+  for (const move of pieceDef.moves ?? []) {
+    const delta = resolveDelta(move, "black");
+    if (move.kind === "step" || move.kind === "jump") {
+      const x = center + delta.dx;
+      const y = center + delta.dy;
+      if (x >= 0 && y >= 0 && x < size && y < size) cells[y * size + x][move.kind] = true;
+    } else if (move.kind === "slide") {
+      let x = center + delta.dx;
+      let y = center + delta.dy;
+      while (x >= 0 && y >= 0 && x < size && y < size) {
+        cells[y * size + x].slide = true;
+        x += delta.dx;
+        y += delta.dy;
+      }
+    }
+  }
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const cell = document.createElement("span");
+      cell.className = "move-diagram-cell";
+      if (x === center && y === center) {
+        cell.classList.add("origin");
+        cell.textContent = pieceDef.display ?? "駒";
+      } else {
+        const data = cells[y * size + x];
+        if (data.slide) { cell.classList.add("slide"); cell.textContent = "↔"; }
+        if (data.step) { cell.classList.add("step"); cell.textContent = "●"; }
+        if (data.jump) { cell.classList.add("jump"); cell.textContent = "◆"; }
+      }
+      wrapper.appendChild(cell);
+    }
+  }
+  return wrapper;
 }

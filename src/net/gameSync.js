@@ -2,11 +2,11 @@
 import { applyMove } from "../core/applyMove.js";
 import { updateGameStatus, resign } from "../core/gameStatus.js";
 import { getLegalActions } from "../core/action.js";
-import { createGameRecord } from "../core/record.js";
+import { createGameRecord, restoreGameRecord } from "../core/record.js";
 import { cloneClock } from "../core/clock.js";
 import { cloneHistoryEntry, cloneMove } from "../core/state.js";
 
-export const WIRE_PROTOCOL_VERSION = 4;
+export const WIRE_PROTOCOL_VERSION = 5;
 
 export function createSyncMessage(state) {
   return {
@@ -14,6 +14,38 @@ export function createSyncMessage(state) {
     protocolVersion: WIRE_PROTOCOL_VERSION,
     record: createGameRecord(state)
   };
+}
+
+export function createSetupMessage(state, setupAction = "update", player = state.setup?.currentPlayer ?? state.turn) {
+  return {
+    type: "setup",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    seq: Number(state.setup?.seq ?? 0),
+    player,
+    setupAction,
+    record: createGameRecord(state),
+    clock: cloneClock(state.clock)
+  };
+}
+
+export function applyIncomingSetup(message, rulesetsById) {
+  if (!message || message.type !== "setup") {
+    return { ok: false, reason: "message_type" };
+  }
+
+  if (!isCompatibleProtocol(message.protocolVersion)) {
+    return { ok: false, reason: "protocol_version" };
+  }
+
+  if (!message.record) {
+    return { ok: false, reason: "record" };
+  }
+
+  try {
+    return { ok: true, state: restoreSetupRecord(message.record, rulesetsById) };
+  } catch (error) {
+    return { ok: false, reason: "restore", error };
+  }
 }
 
 export function createMoveMessage(state) {
@@ -245,8 +277,12 @@ export function sameMove(a, b) {
 }
 
 export function isCompatibleProtocol(version) {
-  // v0.7 accepts v0.5/v0.6 messages. Older messages simply lack clock or sync-request fields.
-  return version === 1 || version === 2 || version === 3 || version === WIRE_PROTOCOL_VERSION;
+  // v2.1 accepts earlier v1-v4 messages for normal move/sync compatibility.
+  return version === 1 || version === 2 || version === 3 || version === 4 || version === WIRE_PROTOCOL_VERSION;
+}
+
+function restoreSetupRecord(record, rulesetsById) {
+  return restoreGameRecord(record, rulesetsById);
 }
  
  

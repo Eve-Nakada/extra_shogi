@@ -33,7 +33,7 @@ export function renderSetupPanel(panel, content, state, uiState) {
     return;
   }
 
-  const player = getSetupPlayer(state);
+  const player = uiState.setupPlayer ?? getSetupPlayer(state);
   const config = getSetupConfig(state);
   const budget = getSetupBudget(state);
   const used = getSelectedSetupCost(state, player);
@@ -44,7 +44,7 @@ export function renderSetupPanel(panel, content, state, uiState) {
   const header = document.createElement("div");
   header.className = "setup-header";
   header.innerHTML = `
-    <div><strong>${playerName(player)}の編成中</strong></div>
+    <div><strong>${playerName(player)}の編成中</strong>${uiState.setupReadonly ? "（閲覧のみ）" : ""}</div>
     <div>点数 ${used}/${budget}（残り ${remaining}）</div>
     <div>モード: ${createModeLabel(state.setup.mode)}</div>
   `;
@@ -66,6 +66,10 @@ export function renderSetupPanel(panel, content, state, uiState) {
   finalize.textContent = `${playerName(player)}の編成を確定`;
   footer.appendChild(finalize);
   content.appendChild(footer);
+
+  if (uiState.setupReadonly) {
+    for (const button of content.querySelectorAll("button")) button.disabled = true;
+  }
 }
 
 function createFixedPacks(state, packs) {

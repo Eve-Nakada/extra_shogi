@@ -30,6 +30,7 @@ export const SETUP_SHOGI = {
   setup: {
     enabled: true,
     defaultMode: "pointBuy",
+    flow: "simultaneous",
     budget: 18,
     requireRoyal: true,
     allowedPieces: ["K", "R", "B", "M", "F", "U", "Q", "D", "T", "X", "A", "C", "W", "G", "S", "N", "L", "P"],
