@@ -12,8 +12,12 @@ export function applyMove(state, move, options = {}) {
     result = applyBoardMove(state, mover, move);
   } else if (move.kind === "drop") {
     result = applyDropMove(state, mover, move);
+  } else if (move.kind === "transform") {
+    result = applyTransformAction(state, mover, move);
+  } else if (move.kind === "triggerEffect") {
+    result = applyTriggerEffectAction(state, mover, move);
   } else {
-    throw new Error(`未知の指し手種別です: ${move.kind}`);
+    throw new Error(`未知の指し手種別です: `);
   }
 
   if (updateHistory) {
@@ -121,3 +125,47 @@ function addCapturedPieceToHand(state, owner, capturedPiece) {
 }
  
  
+
+function applyTransformAction(state, mover, action) {
+  const piece = getSquare(state, action.from.x, action.from.y);
+  if (!piece || piece.owner !== mover) throw new Error("変身元に手番側の駒がありません。");
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  const allowed = (pieceDef?.transformOptions ?? []).some(option => {
+    const toPieceId = typeof option === "string" ? option : option.to;
+    const condition = typeof option === "string" ? "ownTurn" : (option.condition ?? "ownTurn");
+    return toPieceId === action.toPieceId && condition === "ownTurn";
+  });
+  if (!allowed || !state.ruleset.pieces[action.toPieceId]) throw new Error("この駒は指定された駒へ変身できません。");
+
+  const pieceAfter = { owner: mover, id: action.toPieceId };
+  setSquare(state, action.from.x, action.from.y, pieceAfter);
+  return { captured: null, pieceBefore: { ...piece }, pieceAfter: { ...pieceAfter } };
+}
+
+function applyTriggerEffectAction(state, mover, action) {
+  if (action.effectKind !== "promoteNearby") throw new Error(`未知の誘発効果です: ${action.effectKind}`);
+
+  const sourcePiece = getSquare(state, action.source.x, action.source.y);
+  if (!sourcePiece || sourcePiece.owner !== mover) throw new Error("効果元に手番側の駒がありません。");
+
+  const sourceDef = state.ruleset.pieces[sourcePiece.id];
+  const effect = (sourceDef?.effects ?? []).find(candidate => candidate.kind === "promoteNearby");
+  if (!effect) throw new Error("この駒は周囲の駒を成らせる効果を持ちません。");
+
+  const radius = Math.max(1, Number(effect.radius ?? 1));
+  const dx = Math.abs(action.target.x - action.source.x);
+  const dy = Math.abs(action.target.y - action.source.y);
+  if ((dx === 0 && dy === 0) || dx > radius || dy > radius) throw new Error("効果対象が範囲外です。");
+
+  const targetPiece = getSquare(state, action.target.x, action.target.y);
+  if (!targetPiece) throw new Error("効果対象の駒がありません。");
+  if ((effect.target ?? "ownPieces") === "ownPieces" && targetPiece.owner !== mover) throw new Error("自分の駒だけを対象にできます。");
+
+  const targetDef = state.ruleset.pieces[targetPiece.id];
+  if (!targetDef?.promotesTo || targetDef.promotesTo !== action.promoteTo) throw new Error("この駒は効果で成れません。");
+
+  const pieceAfter = { owner: targetPiece.owner, id: action.promoteTo };
+  setSquare(state, action.target.x, action.target.y, pieceAfter);
+  return { captured: null, pieceBefore: { ...targetPiece }, pieceAfter: { ...pieceAfter } };
+}

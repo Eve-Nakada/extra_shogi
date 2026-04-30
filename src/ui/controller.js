@@ -1,9 +1,8 @@
  
-import { applyMove } from "../core/applyMove.js";
+import { applyAction, getAvailableTriggeredActions, getLegalActions } from "../core/action.js";
 import { createClock, formatClockMs, getDisplayRemainingMs, pauseClock, startClock, switchClockAfterMove, updateClock } from "../core/clock.js";
 import { getSquare } from "../core/coordinates.js";
 import { createStatusText, declareImpasse, isCurrentTurnInCheck, resign, updateGameStatus } from "../core/gameStatus.js";
-import { getLegalMoves } from "../core/legalMoveFilter.js";
 import { parseGameRecord, restoreGameRecord, serializeGameRecord } from "../core/record.js";
 import { createKifLikeGameRecord } from "../core/notation.js";
 import { completeGameMeta, normalizeGameMeta } from "../core/meta.js";
@@ -66,6 +65,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   const uiState = {
     selected: null,
     legalMoves: [],
+    specialActions: [],
     replayIndex: null,
     readonly: false,
     view: loadViewPreferences()
@@ -96,6 +96,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.promotionPromoteButton.addEventListener("click", () => confirmPromotionChoice(true));
     elements.promotionNormalButton.addEventListener("click", () => confirmPromotionChoice(false));
     elements.promotionCancelButton.addEventListener("click", cancelPromotionChoice);
+    elements.specialActions.addEventListener("click", handleSpecialActionClick);
     elements.boardPerspectiveSelect.addEventListener("change", () => {
       uiState.view.perspective = elements.boardPerspectiveSelect.value === "white" ? "white" : "black";
       saveCurrentViewPreferences();
@@ -308,13 +309,13 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function selectBoardPiece(x, y) {
     uiState.selected = { kind: "board", x, y };
-    uiState.legalMoves = getLegalMoves(state, uiState.selected);
+    setActionsForSelection(uiState.selected);
     renderAll();
   }
 
   function selectHandPiece(owner, pieceId) {
     uiState.selected = { kind: "hand", owner, pieceId };
-    uiState.legalMoves = getLegalMoves(state, uiState.selected);
+    setActionsForSelection(uiState.selected);
     renderAll();
   }
 
@@ -375,7 +376,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   function executeMove(move) {
     try {
       const mover = state.turn;
-      applyMove(state, move);
+      applyAction(state, move);
       switchClockAfterMove(state.clock, mover, state.ruleset);
       updateGameStatus(state);
       applyFlagFallStatus();
@@ -396,6 +397,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   function clearSelection() {
     uiState.selected = null;
     uiState.legalMoves = [];
+    uiState.specialActions = [];
     if (pendingPromotionChoice) closePromotionChoice();
   }
 
@@ -704,6 +706,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     renderOnlinePanel();
     renderConnectionLog(elements.connectionLog, connectionLog);
     renderPieceGuide(elements.pieceGuideContent, displayState.ruleset);
+    renderSpecialActions(displayState);
   }
 
   function renderPerspectiveHands(displayState) {
@@ -829,6 +832,75 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.syncButton.disabled = !snapshot.connected;
     elements.syncRequestButton.disabled = !snapshot.connected;
     elements.pingButton.disabled = !snapshot.connected;
+  }
+
+
+  function setActionsForSelection(selection) {
+    const actions = getLegalActions(state, selection);
+    uiState.legalMoves = actions.filter(action => action.kind === "move" || action.kind === "drop");
+    uiState.specialActions = actions.filter(action => action.kind === "transform");
+  }
+
+  function handleSpecialActionClick(event) {
+    const button = event.target.closest(".special-action-button");
+    if (!button || !canActOnCurrentTurn()) return;
+    const index = Number(button.dataset.actionIndex);
+    const action = uiState.specialActions[index];
+    if (!action) return;
+    executeMove(action);
+  }
+
+  function renderSpecialActions(displayState) {
+    if (!elements.specialActions) return;
+    elements.specialActions.innerHTML = "";
+
+    if (!canActOnCurrentTurn() || displayState !== state) {
+      const empty = document.createElement("p");
+      empty.className = "special-action-empty";
+      empty.textContent = "特殊アクションはありません。";
+      elements.specialActions.appendChild(empty);
+      return;
+    }
+
+    const selectedActions = uiState.specialActions.filter(action => action.kind === "transform");
+    const triggered = getAvailableTriggeredActions(state, state.turn);
+    const actions = [...selectedActions, ...triggered];
+    uiState.specialActions = actions;
+
+    if (actions.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "special-action-empty";
+      empty.textContent = "特殊アクションはありません。";
+      elements.specialActions.appendChild(empty);
+      return;
+    }
+
+    actions.forEach((action, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "special-action-button";
+      button.dataset.actionIndex = String(index);
+      button.textContent = createSpecialActionLabel(state, action);
+      elements.specialActions.appendChild(button);
+    });
+  }
+
+  function createSpecialActionLabel(state, action) {
+    if (action.kind === "transform") {
+      const before = getSquare(state, action.from.x, action.from.y);
+      const beforeDef = before ? state.ruleset.pieces[before.id] : null;
+      const afterDef = state.ruleset.pieces[action.toPieceId];
+      return `${beforeDef?.display ?? before?.id ?? "駒"} → ${afterDef?.display ?? action.toPieceId} に変身`;
+    }
+
+    if (action.kind === "triggerEffect" && action.effectKind === "promoteNearby") {
+      const target = getSquare(state, action.target.x, action.target.y);
+      const beforeDef = target ? state.ruleset.pieces[target.id] : null;
+      const afterDef = state.ruleset.pieces[action.promoteTo];
+      return `${beforeDef?.display ?? target?.id ?? "駒"} → ${afterDef?.display ?? action.promoteTo} に効果成り`;
+    }
+
+    return "特殊アクション";
   }
 
   function createDisplayStatusText(displayState) {

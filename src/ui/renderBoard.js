@@ -110,6 +110,14 @@ function getLastMove(state) {
     return { from: null, to: entry.move.to };
   }
 
+  if (entry.move.kind === "transform") {
+    return { from: null, to: entry.move.from };
+  }
+
+  if (entry.move.kind === "triggerEffect") {
+    return { from: entry.move.source, to: entry.move.target };
+  }
+
   return null;
 }
 

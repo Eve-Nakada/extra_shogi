@@ -1799,3 +1799,32 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* v1.7 transform / triggered effect actions */
+.special-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.special-action-button {
+  min-height: var(--touch-target, 44px);
+  padding: 7px 10px;
+  border: 1px solid #8a5a18;
+  border-radius: 8px;
+  background: #fff7df;
+  color: #3d2a10;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.special-action-button:hover:not(:disabled) {
+  background: #f6e7bd;
+}
+
+.special-action-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}

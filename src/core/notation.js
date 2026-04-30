@@ -1,4 +1,3 @@
- 
 import { playerName } from "./state.js";
 import { normalizeGameMeta, playerDisplayNameFromMeta } from "./meta.js";
 
@@ -17,6 +16,17 @@ export function formatHistoryEntry(entry, ruleset, index = null) {
     const promote = entry.move.promoteTo ? "成" : "";
     const capture = entry.captured ? "x" : "-";
     return `${prefix}${turn} ${pieceDef?.display ?? pieceId} ${formatSquare(entry.move.from)}${capture}${formatSquare(entry.move.to)}${promote}`;
+  }
+
+  if (entry.move.kind === "transform") {
+    const beforeDef = ruleset.pieces[entry.pieceBefore?.id];
+    const afterDef = ruleset.pieces[entry.move.toPieceId];
+    return `${prefix}${turn} ${beforeDef?.display ?? entry.pieceBefore?.id ?? "?"}変身 ${formatSquare(entry.move.from)}→${afterDef?.display ?? entry.move.toPieceId}`;
+  }
+
+  if (entry.move.kind === "triggerEffect") {
+    const promotedDef = ruleset.pieces[entry.move.promoteTo];
+    return `${prefix}${turn} 効果 ${formatSquare(entry.move.source)} ${formatSquare(entry.move.target)}→${promotedDef?.display ?? entry.move.promoteTo}`;
   }
 
   return `${prefix}${turn} 未知の指し手`;
@@ -92,6 +102,17 @@ function formatHistoryEntryForText(entry, ruleset, meta) {
     return `${player} ${formatSquare(entry.move.from)} -> ${formatSquare(entry.move.to)} ${pieceDef?.display ?? pieceId}${capture}${promote}`;
   }
 
+  if (entry.move.kind === "transform") {
+    const beforeDef = ruleset.pieces[entry.pieceBefore?.id];
+    const afterDef = ruleset.pieces[entry.move.toPieceId];
+    return `${player} ${formatSquare(entry.move.from)} ${beforeDef?.display ?? entry.pieceBefore?.id ?? "?"}変身${afterDef?.display ?? entry.move.toPieceId}`;
+  }
+
+  if (entry.move.kind === "triggerEffect") {
+    const promotedDef = ruleset.pieces[entry.move.promoteTo];
+    return `${player} ${formatSquare(entry.move.source)} 効果 ${formatSquare(entry.move.target)} ${promotedDef?.display ?? entry.move.promoteTo}`;
+  }
+
   return `${player} 未知の指し手`;
 }
 
@@ -109,6 +130,16 @@ function formatKifLikeMove(entry, ruleset) {
     return `${formatJapaneseSquare(entry.move.to)}${pieceDef?.display ?? pieceId}${promote}${from}`;
   }
 
+  if (entry.move.kind === "transform") {
+    const afterDef = ruleset.pieces[entry.move.toPieceId];
+    return `${formatJapaneseSquare(entry.move.from)}${afterDef?.display ?? entry.move.toPieceId}変`;
+  }
+
+  if (entry.move.kind === "triggerEffect") {
+    const promotedDef = ruleset.pieces[entry.move.promoteTo];
+    return `${formatJapaneseSquare(entry.move.target)}${promotedDef?.display ?? entry.move.promoteTo}効成`;
+  }
+
   return "未知の指し手";
 }
 
@@ -118,24 +149,15 @@ function formatJapaneseSquare(square) {
   return `${files[square.x] ?? square.x + 1}${ranks[square.y] ?? square.y + 1}`;
 }
 
-function formatResult(state) {
-  const status = state.status ?? {};
-  if (status.type !== "ended") return "対局中";
-  if (status.reason === "sennichite") return "千日手引き分け";
-  if (status.reason === "impasse" && !status.winner) return "持将棋引き分け";
-  if (status.reason === "perpetual_check") return `${playerDisplayNameFromMeta(state.meta, status.winner)}勝ち（連続王手の千日手）`;
-  if (status.reason === "impasse") return `${playerDisplayNameFromMeta(state.meta, status.winner)}勝ち（持将棋）`;
-  if (status.reason === "time") return `${playerDisplayNameFromMeta(state.meta, status.winner)}勝ち（時間切れ）`;
-  if (status.reason === "resign") return `${playerDisplayNameFromMeta(state.meta, status.winner)}勝ち（投了）`;
-  if (status.reason === "checkmate") return `${playerDisplayNameFromMeta(state.meta, status.winner)}勝ち（詰み）`;
-  return status.winner ? `${playerDisplayNameFromMeta(state.meta, status.winner)}勝ち` : "終局";
-}
-
 function formatDateTime(value) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("ja-JP", { hour12: false });
+  return date.toLocaleString("ja-JP");
 }
- 
- 
+
+function formatResult(state) {
+  if (state.status.type !== "ended") return "対局中";
+  if (!state.status.winner) return "引き分け";
+  return `${playerName(state.status.winner)}勝ち`;
+}

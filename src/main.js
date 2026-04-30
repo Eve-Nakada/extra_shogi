@@ -69,7 +69,8 @@ const elements = {
   clearConnectionLogButton: document.getElementById("clear-connection-log-button"),
   connectionDetail: document.getElementById("connection-detail"),
   connectionLog: document.getElementById("connection-log"),
-  pieceGuideContent: document.getElementById("piece-guide-content")
+  pieceGuideContent: document.getElementById("piece-guide-content"),
+  specialActions: document.getElementById("special-actions")
 };
 
 for (const [name, element] of Object.entries(elements)) {

@@ -102,6 +102,8 @@ function createPieceCard(ruleset, pieceId, pieceDef) {
   appendDetail(details, "持ち駒", pieceDef.droppable === false ? "打てない" : "打てる");
   appendDetail(details, "取られた時", pieceDef.capturedAs ?? "持ち駒化しない");
   appendDetail(details, "捕獲制限", summarizeCaptureRules(pieceDef.captureRules));
+  appendDetail(details, "変身", summarizeTransformOptions(ruleset, pieceDef.transformOptions));
+  appendDetail(details, "効果", summarizeEffects(pieceDef.effects));
   appendDetail(details, "移動", summarizeMoves(pieceDef.moves));
 
   card.append(head, description, tags, details);
@@ -125,4 +127,24 @@ function summarizeMoves(moves = []) {
   }, {});
   const parts = Object.entries(counts).map(([kind, count]) => `${kind}×${count}`);
   return parts.length ? parts.join(" / ") : "なし";
+}
+
+function summarizeTransformOptions(ruleset, options = []) {
+  if (!options.length) return "なし";
+  return options.map(option => {
+    const toPieceId = typeof option === "string" ? option : option.to;
+    const condition = typeof option === "string" ? "ownTurn" : (option.condition ?? "ownTurn");
+    const target = ruleset.pieces[toPieceId];
+    return `${target?.name ?? toPieceId}（${condition}）`;
+  }).join(" / ");
+}
+
+function summarizeEffects(effects = []) {
+  if (!effects.length) return "なし";
+  return effects.map(effect => {
+    if (effect.kind === "promoteNearby") {
+      return `周囲${effect.radius ?? 1}マスの駒を成らせる`;
+    }
+    return effect.kind ?? "不明な効果";
+  }).join(" / ");
 }

@@ -58,6 +58,14 @@ export function isBasicLegal(state, move) {
     return isBasicDropLegal(state, move);
   }
 
+  if (move.kind === "transform") {
+    return isBasicTransformLegal(state, move);
+  }
+
+  if (move.kind === "triggerEffect") {
+    return isBasicTriggerEffectLegal(state, move);
+  }
+
   return false;
 }
 
@@ -157,3 +165,40 @@ function shouldValidatePawnDropMate(options) {
 }
  
  
+
+function isBasicTransformLegal(state, action) {
+  if (!inBoard(action.from.x, action.from.y, state.board)) return false;
+  const piece = getSquare(state, action.from.x, action.from.y);
+  if (!piece || piece.owner !== state.turn) return false;
+  if (!state.ruleset.pieces[action.toPieceId]) return false;
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  return (pieceDef?.transformOptions ?? []).some(option => {
+    const toPieceId = typeof option === "string" ? option : option.to;
+    const condition = typeof option === "string" ? "ownTurn" : (option.condition ?? "ownTurn");
+    return toPieceId === action.toPieceId && condition === "ownTurn";
+  });
+}
+
+function isBasicTriggerEffectLegal(state, action) {
+  if (action.effectKind !== "promoteNearby") return false;
+  if (!inBoard(action.source.x, action.source.y, state.board)) return false;
+  if (!inBoard(action.target.x, action.target.y, state.board)) return false;
+
+  const sourcePiece = getSquare(state, action.source.x, action.source.y);
+  const targetPiece = getSquare(state, action.target.x, action.target.y);
+  if (!sourcePiece || sourcePiece.owner !== state.turn || !targetPiece) return false;
+
+  const sourceDef = state.ruleset.pieces[sourcePiece.id];
+  const effect = (sourceDef?.effects ?? []).find(candidate => candidate.kind === "promoteNearby");
+  if (!effect) return false;
+
+  const radius = Math.max(1, Number(effect.radius ?? 1));
+  const dx = Math.abs(action.target.x - action.source.x);
+  const dy = Math.abs(action.target.y - action.source.y);
+  if ((dx === 0 && dy === 0) || dx > radius || dy > radius) return false;
+  if ((effect.target ?? "ownPieces") === "ownPieces" && targetPiece.owner !== state.turn) return false;
+
+  const targetDef = state.ruleset.pieces[targetPiece.id];
+  return Boolean(targetDef?.promotesTo && targetDef.promotesTo === action.promoteTo && state.ruleset.pieces[action.promoteTo]);
+}

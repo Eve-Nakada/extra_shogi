@@ -19,6 +19,25 @@ const COPPER_MOVES = [
   { kind: "step", dx: 0, fy: -1 }
 ];
 
+const SOLDIER_MOVES = [
+  { kind: "step", dx: 0, fy: 1 },
+  { kind: "step", dx: -1, fy: 0 },
+  { kind: "step", dx: 1, fy: 0 }
+];
+
+const STRONG_SOLDIER_MOVES = [
+  ...SOLDIER_MOVES,
+  { kind: "step", dx: -1, fy: 1 },
+  { kind: "step", dx: 1, fy: 1 }
+];
+
+const MAGE_MOVES = [
+  { kind: "step", dx: -1, fy: 1 },
+  { kind: "step", dx: 0, fy: 1 },
+  { kind: "step", dx: 1, fy: 1 },
+  { kind: "step", dx: 0, fy: -1 }
+];
+
 const RUNNER_MOVES = [
   { kind: "slide", dx: 0, fy: 1 },
   { kind: "step", dx: -1, fy: 0 },
@@ -44,10 +63,14 @@ function createExpandedInitialPieces() {
     { owner: "white", id: "B", x: 9, y: 1 },
     { owner: "white", id: "W", x: 0, y: 2 },
     { owner: "white", id: "F", x: 5, y: 2 },
+    { owner: "white", id: "U", x: 6, y: 2 },
+    { owner: "white", id: "X", x: 8, y: 2 },
     { owner: "white", id: "W", x: 10, y: 2 },
 
     { owner: "black", id: "W", x: 0, y: 8 },
     { owner: "black", id: "F", x: 5, y: 8 },
+    { owner: "black", id: "U", x: 6, y: 8 },
+    { owner: "black", id: "X", x: 8, y: 8 },
     { owner: "black", id: "W", x: 10, y: 8 },
     { owner: "black", id: "B", x: 1, y: 9 },
     { owner: "black", id: "M", x: 5, y: 9 },
@@ -67,8 +90,8 @@ function createExpandedInitialPieces() {
   ];
 
   for (let x = 0; x < 11; x += 1) {
-    pieces.push({ owner: "white", id: "P", x, y: 3 });
-    pieces.push({ owner: "black", id: "P", x, y: 7 });
+    pieces.push({ owner: "white", id: x === 5 ? "A" : "P", x, y: 3 });
+    pieces.push({ owner: "black", id: x === 5 ? "A" : "P", x, y: 7 });
   }
 
   return pieces;
@@ -84,7 +107,7 @@ export const EXPANDED_SHOGI = {
     height: 11
   },
 
-  handOrder: ["R", "B", "M", "F", "C", "W", "G", "S", "N", "L", "P"],
+  handOrder: ["R", "B", "M", "F", "U", "X", "Y", "Z", "A", "C", "W", "G", "S", "N", "L", "P"],
 
   pieces: {
     ...STANDARD_SHOGI.pieces,
@@ -140,6 +163,107 @@ export const EXPANDED_SHOGI = {
       droppable: true,
       capturedAs: "F",
       moves: KING_MOVES
+    },
+
+    A: {
+      name: "兵",
+      display: "兵",
+      description: "2段階成り検証用の小駒。成ると精兵、さらに英雄へ成れる。",
+      category: "minor",
+      point: 1,
+      attributes: [],
+      droppable: true,
+      capturedAs: "A",
+      promotesTo: "PA",
+      moves: SOLDIER_MOVES
+    },
+
+    PA: {
+      name: "精兵",
+      display: "精",
+      description: "兵が1段階成った駒。さらに英雄へ成れる。",
+      category: "promoted",
+      point: 2,
+      attributes: ["promoted", "goldLike"],
+      promoted: true,
+      droppable: false,
+      capturedAs: "A",
+      promotesTo: "PPA",
+      moves: STRONG_SOLDIER_MOVES
+    },
+
+    PPA: {
+      name: "英雄",
+      display: "英",
+      description: "兵の2段階目の成駒。取られると兵に戻る。",
+      category: "promoted",
+      point: 3,
+      attributes: ["promoted", "goldLike"],
+      promoted: true,
+      droppable: false,
+      capturedAs: "A",
+      moves: GOLD_MOVES
+    },
+
+    X: {
+      name: "変化駒",
+      display: "変",
+      description: "手番中に攻撃形態または守備形態へその場変身できる検証駒。",
+      category: "special",
+      point: 3,
+      attributes: ["canTransform"],
+      transformOptions: [
+        { to: "Y", condition: "ownTurn" },
+        { to: "Z", condition: "ownTurn" }
+      ],
+      droppable: true,
+      capturedAs: "X",
+      moves: KING_MOVES
+    },
+
+    Y: {
+      name: "攻変",
+      display: "攻",
+      description: "変化駒の攻撃形態。縦横へ走れるが、再び変化駒へ戻れる。",
+      category: "special",
+      point: 3,
+      attributes: ["canTransform"],
+      transformOptions: [
+        { to: "X", condition: "ownTurn" }
+      ],
+      droppable: false,
+      capturedAs: "X",
+      moves: STANDARD_SHOGI.pieces.R.moves
+    },
+
+    Z: {
+      name: "守変",
+      display: "守",
+      description: "変化駒の守備形態。金属性を持ち、再び変化駒へ戻れる。",
+      category: "special",
+      point: 3,
+      attributes: ["goldLike", "canTransform"],
+      transformOptions: [
+        { to: "X", condition: "ownTurn" }
+      ],
+      droppable: false,
+      capturedAs: "X",
+      moves: GOLD_MOVES
+    },
+
+    U: {
+      name: "昇格師",
+      display: "昇",
+      description: "周囲1マスの自分の駒を、効果アクションで任意に成らせる特殊駒。",
+      category: "special",
+      point: 4,
+      attributes: [],
+      effects: [
+        { kind: "promoteNearby", timing: "ownTurn", radius: 1, target: "ownPieces", optional: true }
+      ],
+      droppable: true,
+      capturedAs: "U",
+      moves: MAGE_MOVES
     },
 
     W: {

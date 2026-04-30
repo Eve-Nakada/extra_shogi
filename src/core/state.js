@@ -1,4 +1,3 @@
- 
 import { setSquare } from "./coordinates.js";
 import { cloneClock } from "./clock.js";
 import { createDefaultMeta, cloneGameMeta } from "./meta.js";
@@ -91,6 +90,24 @@ export function cloneMove(move) {
     };
   }
 
+  if (move.kind === "transform") {
+    return {
+      kind: "transform",
+      from: { ...move.from },
+      toPieceId: move.toPieceId
+    };
+  }
+
+  if (move.kind === "triggerEffect") {
+    return {
+      kind: "triggerEffect",
+      effectKind: move.effectKind,
+      source: { ...move.source },
+      target: { ...move.target },
+      promoteTo: move.promoteTo
+    };
+  }
+
   throw new Error(`未知の指し手種別です: ${move.kind}`);
 }
 
@@ -115,5 +132,3 @@ export function playerName(player) {
   if (player === "spectator") return "観戦者";
   return player === "black" ? "先手" : "後手";
 }
- 
- 

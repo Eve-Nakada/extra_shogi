@@ -620,3 +620,49 @@ test("v1.6 王手判定は実際に取れる場合だけ王手とする", () => 
   assert.equal(isInCheck(state, "black"), true);
 });
 
+
+import { applyAction, getAvailableTriggeredActions, getLegalActions } from "../src/core/action.js";
+
+test("v1.7 2段階成りはpromotesToの連鎖で生成できる", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  put(state, "black", "PA", 0, 2);
+
+  const moves = getLegalMoves(state, { kind: "board", x: 0, y: 2 });
+
+  assert.equal(hasMoveTo(moves, 0, 1, null), true);
+  assert.equal(hasMoveTo(moves, 0, 1, "PPA"), true);
+});
+
+test("v1.7 transform actionでその場変身できる", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  put(state, "black", "X", 4, 8);
+
+  const actions = getLegalActions(state, { kind: "board", x: 4, y: 8 });
+  const transform = actions.find(action => action.kind === "transform" && action.toPieceId === "Y");
+
+  assert.ok(transform);
+  applyAction(state, transform);
+  assert.deepEqual(getSquare(state, 4, 8), { owner: "black", id: "Y" });
+  assert.equal(state.turn, "white");
+  assert.equal(state.history.at(-1).move.kind, "transform");
+});
+
+test("v1.7 promoteNearbyのtriggered actionで周囲の駒を成らせる", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  put(state, "black", "K", 5, 10);
+  put(state, "white", "K", 5, 0);
+  put(state, "black", "U", 4, 8);
+  put(state, "black", "A", 5, 8);
+
+  const actions = getAvailableTriggeredActions(state, "black");
+  const promote = actions.find(action => action.kind === "triggerEffect" && action.target.x === 5 && action.target.y === 8);
+
+  assert.ok(promote);
+  applyAction(state, promote);
+  assert.deepEqual(getSquare(state, 5, 8), { owner: "black", id: "PA" });
+  assert.equal(state.turn, "white");
+});

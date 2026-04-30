@@ -1,4 +1,3 @@
- 
 import { getSquare, setSquare } from "./coordinates.js";
 
 export function undoLastMove(state) {
@@ -19,6 +18,16 @@ export function undoLastMove(state) {
 
   if (entry.move.kind === "drop") {
     undoDropMove(state, entry);
+    return true;
+  }
+
+  if (entry.move.kind === "transform") {
+    undoTransformAction(state, entry);
+    return true;
+  }
+
+  if (entry.move.kind === "triggerEffect") {
+    undoTriggerEffectAction(state, entry);
     return true;
   }
 
@@ -45,6 +54,16 @@ function undoDropMove(state, entry) {
   const { move, turn } = entry;
   setSquare(state, move.to.x, move.to.y, null);
   state.hands[turn][move.pieceId] = (state.hands[turn][move.pieceId] ?? 0) + 1;
+}
+
+function undoTransformAction(state, entry) {
+  const { move } = entry;
+  setSquare(state, move.from.x, move.from.y, entry.pieceBefore ? { ...entry.pieceBefore } : null);
+}
+
+function undoTriggerEffectAction(state, entry) {
+  const { move } = entry;
+  setSquare(state, move.target.x, move.target.y, entry.pieceBefore ? { ...entry.pieceBefore } : null);
 }
 
 function inferPieceBefore(state, entry, currentPiece) {
@@ -76,5 +95,3 @@ function removeCapturedPieceFromHand(state, owner, capturedPiece) {
 
   state.hands[owner][handPieceId] = count - 1;
 }
- 
- 
