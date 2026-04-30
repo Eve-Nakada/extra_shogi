@@ -1,11 +1,11 @@
 import { canCapture } from "./capture.js";
- 
-import { cloneMove, cloneState, opposite } from "./state.js";
+import { cloneMove, cloneState, cloneTurnState, createDefaultTurnState, isExtraActionTurnState, opposite } from "./state.js";
 import { getSquare, setSquare } from "./coordinates.js";
 
 export function applyMove(state, move, options = {}) {
   const { updateTurn = true, updateHistory = true } = options;
   const mover = state.turn;
+  const turnStateBefore = cloneTurnState(state.turnState);
   let result;
 
   if (move.kind === "move") {
@@ -16,8 +16,14 @@ export function applyMove(state, move, options = {}) {
     result = applyTransformAction(state, mover, move);
   } else if (move.kind === "triggerEffect") {
     result = applyTriggerEffectAction(state, mover, move);
+  } else if (move.kind === "compound") {
+    result = applyCompoundAction(state, mover, move);
   } else {
-    throw new Error(`未知の指し手種別です: `);
+    throw new Error(`未知の指し手種別です: ${move.kind}`);
+  }
+
+  if (updateTurn) {
+    updateTurnStateAfterAction(state, mover, move, result, turnStateBefore);
   }
 
   if (updateHistory) {
@@ -26,12 +32,11 @@ export function applyMove(state, move, options = {}) {
       move: cloneMove(move),
       captured: result.captured ? { ...result.captured } : null,
       pieceBefore: result.pieceBefore ? { ...result.pieceBefore } : null,
-      pieceAfter: result.pieceAfter ? { ...result.pieceAfter } : null
+      pieceAfter: result.pieceAfter ? { ...result.pieceAfter } : null,
+      subEntries: result.subEntries ? result.subEntries.map(cloneHistoryEntryLike) : undefined,
+      turnStateBefore,
+      turnStateAfter: cloneTurnState(state.turnState)
     });
-  }
-
-  if (updateTurn) {
-    state.turn = opposite(state, mover);
   }
 
   return {
@@ -39,7 +44,8 @@ export function applyMove(state, move, options = {}) {
     move: cloneMove(move),
     captured: result.captured,
     pieceBefore: result.pieceBefore,
-    pieceAfter: result.pieceAfter
+    pieceAfter: result.pieceAfter,
+    subEntries: result.subEntries
   };
 }
 
@@ -82,7 +88,8 @@ function applyBoardMove(state, mover, move) {
   return {
     captured: target ? { ...target } : null,
     pieceBefore: { ...piece },
-    pieceAfter: { ...pieceAfter }
+    pieceAfter: { ...pieceAfter },
+    finalSquare: { ...move.to }
   };
 }
 
@@ -111,7 +118,43 @@ function applyDropMove(state, mover, move) {
   return {
     captured: null,
     pieceBefore: null,
-    pieceAfter
+    pieceAfter,
+    finalSquare: { ...move.to }
+  };
+}
+
+function applyCompoundAction(state, mover, action) {
+  if (!Array.isArray(action.actions) || action.actions.length === 0) {
+    throw new Error("複合アクションの内容がありません。");
+  }
+
+  const subEntries = [];
+  let firstResult = null;
+  let lastResult = null;
+
+  for (const subAction of action.actions) {
+    const beforeTurnState = cloneTurnState(state.turnState);
+    const result = applyMove(state, subAction, { updateTurn: false, updateHistory: false });
+    const subEntry = {
+      turn: mover,
+      move: cloneMove(subAction),
+      captured: result.captured ? { ...result.captured } : null,
+      pieceBefore: result.pieceBefore ? { ...result.pieceBefore } : null,
+      pieceAfter: result.pieceAfter ? { ...result.pieceAfter } : null,
+      turnStateBefore: beforeTurnState,
+      turnStateAfter: cloneTurnState(state.turnState)
+    };
+    subEntries.push(subEntry);
+    if (!firstResult) firstResult = result;
+    lastResult = result;
+  }
+
+  return {
+    captured: subEntries.find(entry => entry.captured)?.captured ?? null,
+    pieceBefore: firstResult?.pieceBefore ?? null,
+    pieceAfter: lastResult?.pieceAfter ?? null,
+    subEntries,
+    finalSquare: getActionFinalSquare(action.actions.at(-1))
   };
 }
 
@@ -123,8 +166,6 @@ function addCapturedPieceToHand(state, owner, capturedPiece) {
 
   state.hands[owner][handPieceId] = (state.hands[owner][handPieceId] ?? 0) + 1;
 }
- 
- 
 
 function applyTransformAction(state, mover, action) {
   const piece = getSquare(state, action.from.x, action.from.y);
@@ -140,7 +181,7 @@ function applyTransformAction(state, mover, action) {
 
   const pieceAfter = { owner: mover, id: action.toPieceId };
   setSquare(state, action.from.x, action.from.y, pieceAfter);
-  return { captured: null, pieceBefore: { ...piece }, pieceAfter: { ...pieceAfter } };
+  return { captured: null, pieceBefore: { ...piece }, pieceAfter: { ...pieceAfter }, finalSquare: { ...action.from } };
 }
 
 function applyTriggerEffectAction(state, mover, action) {
@@ -167,5 +208,57 @@ function applyTriggerEffectAction(state, mover, action) {
 
   const pieceAfter = { owner: targetPiece.owner, id: action.promoteTo };
   setSquare(state, action.target.x, action.target.y, pieceAfter);
-  return { captured: null, pieceBefore: { ...targetPiece }, pieceAfter: { ...pieceAfter } };
+  return { captured: null, pieceBefore: { ...targetPiece }, pieceAfter: { ...pieceAfter }, finalSquare: { ...action.target } };
+}
+
+function updateTurnStateAfterAction(state, mover, action, result, turnStateBefore) {
+  if (isExtraActionTurnState(turnStateBefore)) {
+    state.turnState = createDefaultTurnState();
+    state.turn = opposite(state, mover);
+    return;
+  }
+
+  const extra = getExtraActionOnCaptureEffect(state, result.pieceAfter);
+  if (action.kind === "move" && result.captured && extra) {
+    state.turnState = {
+      phase: "extraAction",
+      actionIndex: 1,
+      remainingActions: Math.max(1, Number(extra.actionCount ?? 1)),
+      forcedPiece: { ...result.finalSquare },
+      reason: "extraActionOnCapture",
+      compoundActions: [cloneMove(action)]
+    };
+    return;
+  }
+
+  state.turnState = createDefaultTurnState();
+  state.turn = opposite(state, mover);
+}
+
+function getExtraActionOnCaptureEffect(state, piece) {
+  if (!piece) return null;
+  const pieceDef = state.ruleset.pieces[piece.id];
+  return (pieceDef?.effects ?? []).find(effect => effect.kind === "extraActionOnCapture" && effect.samePieceOnly !== false);
+}
+
+function getActionFinalSquare(action) {
+  if (!action) return null;
+  if (action.kind === "move" || action.kind === "drop") return { ...action.to };
+  if (action.kind === "transform") return { ...action.from };
+  if (action.kind === "triggerEffect") return { ...action.target };
+  if (action.kind === "compound") return getActionFinalSquare(action.actions.at(-1));
+  return null;
+}
+
+function cloneHistoryEntryLike(entry) {
+  return {
+    turn: entry.turn,
+    move: cloneMove(entry.move),
+    captured: entry.captured ? { ...entry.captured } : null,
+    pieceBefore: entry.pieceBefore ? { ...entry.pieceBefore } : null,
+    pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null,
+    subEntries: entry.subEntries ? entry.subEntries.map(cloneHistoryEntryLike) : undefined,
+    turnStateBefore: cloneTurnState(entry.turnStateBefore),
+    turnStateAfter: cloneTurnState(entry.turnStateAfter)
+  };
 }

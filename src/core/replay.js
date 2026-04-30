@@ -1,6 +1,6 @@
  
 import { applyMove } from "./applyMove.js";
-import { createInitialState, cloneMove } from "./state.js";
+import { createInitialState, cloneHistoryEntry as cloneStateHistoryEntry, cloneMove } from "./state.js";
 
 export function replayHistory(ruleset, history, count = history.length) {
   const state = createInitialState(ruleset);
@@ -26,13 +26,7 @@ export function replayHistory(ruleset, history, count = history.length) {
 }
 
 export function cloneHistoryEntry(entry) {
-  return {
-    turn: entry.turn,
-    move: cloneMove(entry.move),
-    captured: entry.captured ? { ...entry.captured } : null,
-    pieceBefore: entry.pieceBefore ? { ...entry.pieceBefore } : null,
-    pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null
-  };
+  return cloneStateHistoryEntry(entry);
 }
  
  

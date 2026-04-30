@@ -118,6 +118,12 @@ function getLastMove(state) {
     return { from: entry.move.source, to: entry.move.target };
   }
 
+  if (entry.move.kind === "compound") {
+    const first = entry.move.actions?.[0];
+    const last = entry.move.actions?.at(-1);
+    return { from: first?.from ?? null, to: last?.to ?? last?.from ?? null };
+  }
+
   return null;
 }
 

@@ -7,7 +7,7 @@ import { parseGameRecord, restoreGameRecord, serializeGameRecord } from "../core
 import { createKifLikeGameRecord } from "../core/notation.js";
 import { completeGameMeta, normalizeGameMeta } from "../core/meta.js";
 import { replayHistory } from "../core/replay.js";
-import { opposite, playerName } from "../core/state.js";
+import { isExtraActionTurnState, opposite, playerName } from "../core/state.js";
 import { undoLastMove } from "../core/undo.js";
 import { applyIncomingClock, applyIncomingMove, applyIncomingResign, createClockMessage, createMoveMessage, createPingMessage, createPongMessage, createResignMessage, createSyncMessage, createSyncRequestMessage } from "../net/gameSync.js";
 import { createConnectionLog, addConnectionLog, clearConnectionLog, createSnapshotText, summarizeMessage } from "../net/connectionLog.js";
@@ -376,8 +376,10 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   function executeMove(move) {
     try {
       const mover = state.turn;
+      const wasExtraAction = isExtraActionTurnState(state.turnState);
       applyAction(state, move);
-      switchClockAfterMove(state.clock, mover, state.ruleset);
+      if (!isExtraActionTurnState(state.turnState) && !wasExtraAction) switchClockAfterMove(state.clock, mover, state.ruleset);
+      if (wasExtraAction) switchClockAfterMove(state.clock, mover, state.ruleset);
       updateGameStatus(state);
       applyFlagFallStatus();
       if (onlineSession.isConnected()) sendOnlineMessage(createMoveMessage(state));
@@ -743,7 +745,9 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     if (summary) {
       const mode = isReplayMode()
         ? `再生 ${getReplayIndex()}/${state.history.length}`
-        : `${ply}手目まで / 次は第${ply + 1}手`;
+        : isExtraActionTurnState(displayState.turnState)
+          ? `${ply}手目まで / 追加行動中`
+          : `${ply}手目まで / 次は第${ply + 1}手`;
       const online = onlineSession.isOnlineMode()
         ? snapshot.spectating
           ? "観戦中"
@@ -838,7 +842,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   function setActionsForSelection(selection) {
     const actions = getLegalActions(state, selection);
     uiState.legalMoves = actions.filter(action => action.kind === "move" || action.kind === "drop");
-    uiState.specialActions = actions.filter(action => action.kind === "transform");
+    uiState.specialActions = actions.filter(action => action.kind === "transform" || action.kind === "compound");
   }
 
   function handleSpecialActionClick(event) {
@@ -862,7 +866,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       return;
     }
 
-    const selectedActions = uiState.specialActions.filter(action => action.kind === "transform");
+    const selectedActions = uiState.specialActions.filter(action => action.kind === "transform" || action.kind === "compound");
     const triggered = getAvailableTriggeredActions(state, state.turn);
     const actions = [...selectedActions, ...triggered];
     uiState.specialActions = actions;
@@ -900,7 +904,18 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       return `${beforeDef?.display ?? target?.id ?? "駒"} → ${afterDef?.display ?? action.promoteTo} に効果成り`;
     }
 
+    if (action.kind === "compound") {
+      const first = action.actions[0];
+      const last = action.actions.at(-1);
+      return `2回行動 ${formatActionPath(first)} → ${formatActionPath(last)}`;
+    }
+
     return "特殊アクション";
+  }
+
+  function formatActionPath(action) {
+    if (action?.kind === "move") return `${action.from.x + 1},${action.from.y + 1}-${action.to.x + 1},${action.to.y + 1}${action.promoteTo ? "成" : ""}`;
+    return action?.kind ?? "?";
   }
 
   function createDisplayStatusText(displayState) {
@@ -908,6 +923,10 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     base = isReplayMode()
       ? `${createStatusText(displayState)} / 再生 ${uiState.replayIndex}/${state.history.length}`
       : createStatusText(displayState);
+
+    if (isExtraActionTurnState(displayState.turnState)) {
+      base += " / 追加行動中";
+    }
 
     if (!onlineSession.isOnlineMode()) return base;
     const snapshot = onlineSession.getSnapshot();

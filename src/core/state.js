@@ -23,7 +23,8 @@ export function createInitialState(ruleset) {
       reason: null
     },
     clock: null,
-    meta: createDefaultMeta()
+    meta: createDefaultMeta(),
+    turnState: createDefaultTurnState()
   };
 
   for (const item of ruleset.initialPieces) {
@@ -58,7 +59,8 @@ export function cloneState(state) {
     history: state.history.map(cloneHistoryEntry),
     status: { ...state.status },
     clock: cloneClock(state.clock),
-    meta: cloneGameMeta(state.meta)
+    meta: cloneGameMeta(state.meta),
+    turnState: cloneTurnState(state.turnState)
   };
 }
 
@@ -68,7 +70,10 @@ export function cloneHistoryEntry(entry) {
     move: cloneMove(entry.move),
     captured: entry.captured ? { ...entry.captured } : null,
     pieceBefore: entry.pieceBefore ? { ...entry.pieceBefore } : null,
-    pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null
+    pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null,
+    subEntries: Array.isArray(entry.subEntries) ? entry.subEntries.map(cloneHistoryEntry) : undefined,
+    turnStateBefore: cloneTurnState(entry.turnStateBefore),
+    turnStateAfter: cloneTurnState(entry.turnStateAfter)
   };
 }
 
@@ -108,7 +113,43 @@ export function cloneMove(move) {
     };
   }
 
+  if (move.kind === "compound") {
+    return {
+      kind: "compound",
+      actions: move.actions.map(cloneMove)
+    };
+  }
+
   throw new Error(`未知の指し手種別です: ${move.kind}`);
+}
+
+export function createDefaultTurnState() {
+  return {
+    phase: "normal",
+    actionIndex: 0,
+    remainingActions: 1,
+    forcedPiece: null,
+    reason: null,
+    compoundActions: []
+  };
+}
+
+export function cloneTurnState(turnState) {
+  if (!turnState) return createDefaultTurnState();
+  return {
+    phase: turnState.phase ?? "normal",
+    actionIndex: Number(turnState.actionIndex ?? 0),
+    remainingActions: Number(turnState.remainingActions ?? 1),
+    forcedPiece: turnState.forcedPiece ? { ...turnState.forcedPiece } : null,
+    reason: turnState.reason ?? null,
+    compoundActions: Array.isArray(turnState.compoundActions)
+      ? turnState.compoundActions.map(cloneMove)
+      : []
+  };
+}
+
+export function isExtraActionTurnState(turnState) {
+  return Boolean(turnState && turnState.phase === "extraAction" && turnState.remainingActions > 0 && turnState.forcedPiece);
 }
 
 function cloneHands(hands) {

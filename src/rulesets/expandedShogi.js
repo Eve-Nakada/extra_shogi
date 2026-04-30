@@ -62,12 +62,16 @@ function createExpandedInitialPieces() {
     { owner: "white", id: "M", x: 5, y: 1 },
     { owner: "white", id: "B", x: 9, y: 1 },
     { owner: "white", id: "W", x: 0, y: 2 },
+    { owner: "white", id: "Q", x: 2, y: 2 },
+    { owner: "white", id: "D", x: 3, y: 2 },
     { owner: "white", id: "F", x: 5, y: 2 },
     { owner: "white", id: "U", x: 6, y: 2 },
     { owner: "white", id: "X", x: 8, y: 2 },
     { owner: "white", id: "W", x: 10, y: 2 },
 
     { owner: "black", id: "W", x: 0, y: 8 },
+    { owner: "black", id: "Q", x: 2, y: 8 },
+    { owner: "black", id: "D", x: 3, y: 8 },
     { owner: "black", id: "F", x: 5, y: 8 },
     { owner: "black", id: "U", x: 6, y: 8 },
     { owner: "black", id: "X", x: 8, y: 8 },
@@ -107,7 +111,7 @@ export const EXPANDED_SHOGI = {
     height: 11
   },
 
-  handOrder: ["R", "B", "M", "F", "U", "X", "Y", "Z", "A", "C", "W", "G", "S", "N", "L", "P"],
+  handOrder: ["R", "B", "M", "F", "U", "Q", "D", "X", "Y", "Z", "A", "C", "W", "G", "S", "N", "L", "P"],
 
   pieces: {
     ...STANDARD_SHOGI.pieces,
@@ -249,6 +253,38 @@ export const EXPANDED_SHOGI = {
       droppable: false,
       capturedAs: "X",
       moves: GOLD_MOVES
+    },
+
+
+
+    Q: {
+      name: "追撃駒",
+      display: "追",
+      description: "敵駒を取ると、同じ駒だけもう一度動ける特殊駒。追加行動の検証に使う。",
+      category: "special",
+      point: 4,
+      attributes: ["multiAction"],
+      effects: [
+        { kind: "extraActionOnCapture", actionCount: 1, samePieceOnly: true, chainable: false }
+      ],
+      droppable: true,
+      capturedAs: "Q",
+      moves: KING_MOVES
+    },
+
+    D: {
+      name: "二動駒",
+      display: "二",
+      description: "1手の中で同じ駒を最大2回動かせる特殊駒。複合アクションの検証に使う。",
+      category: "special",
+      point: 4,
+      attributes: ["multiAction"],
+      actions: [
+        { kind: "multiMove", count: 2, samePieceOnly: true, secondMoveSet: "same", optionalStop: true, allowCaptureOnSecond: true }
+      ],
+      droppable: true,
+      capturedAs: "D",
+      moves: KING_MOVES
     },
 
     U: {

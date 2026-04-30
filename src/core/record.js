@@ -1,6 +1,6 @@
  
 import { replayHistory } from "./replay.js";
-import { cloneMove } from "./state.js";
+import { cloneHistoryEntry, cloneTurnState } from "./state.js";
 import { cloneClock } from "./clock.js";
 import { createPositionHash, detectRepetition } from "./repetition.js";
 import { evaluateImpasse } from "./impasse.js";
@@ -21,13 +21,8 @@ export function createGameRecord(state) {
     repetition: detectRepetition(state),
     impasse: evaluateImpasse(state),
     clock: cloneClock(state.clock),
-    history: state.history.map(entry => ({
-      turn: entry.turn,
-      move: cloneMove(entry.move),
-      captured: entry.captured ? { ...entry.captured } : null,
-      pieceBefore: entry.pieceBefore ? { ...entry.pieceBefore } : null,
-      pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null
-    }))
+    turnState: cloneTurnState(state.turnState),
+    history: state.history.map(cloneHistoryEntry)
   };
 }
 
@@ -64,6 +59,7 @@ export function restoreGameRecord(record, rulesetsById) {
     reason: null
   };
   state.clock = cloneClock(record.clock);
+  state.turnState = cloneTurnState(record.turnState);
   state.meta = cloneGameMeta(record.meta);
 
   return state;
