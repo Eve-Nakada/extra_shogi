@@ -64,7 +64,13 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     selected: null,
     legalMoves: [],
     replayIndex: null,
-    readonly: false
+    readonly: false,
+    view: {
+      perspective: "black",
+      showLegalMoves: true,
+      confirmResign: true,
+      confirmReset: true
+    }
   };
 
   initializeRulesetSelect();
@@ -92,6 +98,26 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.promotionPromoteButton.addEventListener("click", () => confirmPromotionChoice(true));
     elements.promotionNormalButton.addEventListener("click", () => confirmPromotionChoice(false));
     elements.promotionCancelButton.addEventListener("click", cancelPromotionChoice);
+    elements.boardPerspectiveSelect.addEventListener("change", () => {
+      uiState.view.perspective = elements.boardPerspectiveSelect.value === "white" ? "white" : "black";
+      clearSelection();
+      renderAll();
+    });
+    elements.flipBoardButton.addEventListener("click", () => {
+      uiState.view.perspective = uiState.view.perspective === "black" ? "white" : "black";
+      clearSelection();
+      renderAll();
+    });
+    elements.legalHighlightEnabled.addEventListener("change", () => {
+      uiState.view.showLegalMoves = elements.legalHighlightEnabled.checked;
+      renderAll();
+    });
+    elements.confirmResignEnabled.addEventListener("change", () => {
+      uiState.view.confirmResign = elements.confirmResignEnabled.checked;
+    });
+    elements.confirmResetEnabled.addEventListener("change", () => {
+      uiState.view.confirmReset = elements.confirmResetEnabled.checked;
+    });
 
     elements.historyList.addEventListener("click", event => {
       if (onlineSession.isOnlineMode()) return;
@@ -144,6 +170,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       if (state.status.type !== "playing" || isReplayMode()) return;
       if (onlineSession.isOnlineMode() && !onlineSession.isConnected()) return;
       const resigningPlayer = getLocalResigningPlayer();
+      if (uiState.view.confirmResign && !window.confirm(playerName(resigningPlayer) + "が投了します。よろしいですか？")) return;
       const message = onlineSession.isConnected() ? createResignMessage(state, resigningPlayer) : null;
       resign(state, resigningPlayer);
       if (message) sendOnlineMessage(message);
@@ -153,6 +180,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
     elements.resetButton.addEventListener("click", () => {
       if (onlineSession.isOnlineMode()) return;
+      if (uiState.view.confirmReset && !window.confirm("現在の対局を初期化します。よろしいですか？")) return;
       state = createState(currentRulesetId);
       clearSelection();
       clearReplay();
@@ -669,6 +697,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     renderMetaPanel();
     renderTextRecordPreview();
     renderClockPanel();
+    renderViewOptions();
     renderActionButtons();
     renderOnlinePanel();
     renderConnectionLog(elements.connectionLog, connectionLog);
@@ -729,6 +758,16 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     const white = formatClockMs(getDisplayRemainingMs(clock, "white"));
     const active = clock.running ? ` / 計測中: ${playerName(clock.activePlayer)}` : " / 停止中";
     elements.clockDisplay.textContent = `先手 ${black} / 後手 ${white}${active}`;
+  }
+
+  function renderViewOptions() {
+    elements.boardPerspectiveSelect.value = uiState.view.perspective;
+    elements.legalHighlightEnabled.checked = uiState.view.showLegalMoves;
+    elements.confirmResignEnabled.checked = uiState.view.confirmResign;
+    elements.confirmResetEnabled.checked = uiState.view.confirmReset;
+    elements.flipBoardButton.textContent = uiState.view.perspective === "black"
+      ? "後手視点に切替"
+      : "先手視点に切替";
   }
 
   function renderActionButtons() {

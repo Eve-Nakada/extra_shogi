@@ -1,11 +1,19 @@
+import { findRoyal, isInCheck } from "../core/check.js";
 import { getSquare } from "../core/coordinates.js";
 
 export function renderBoard(boardElement, state, uiState) {
   setBoardCssVariables(boardElement, state);
   boardElement.innerHTML = "";
 
-  for (let y = 0; y < state.board.height; y += 1) {
-    for (let x = 0; x < state.board.width; x += 1) {
+  const perspective = uiState.view?.perspective ?? "black";
+  boardElement.classList.toggle("view-black", perspective === "black");
+  boardElement.classList.toggle("view-white", perspective === "white");
+
+  const lastMove = getLastMove(state);
+  const checkedRoyal = getCheckedRoyal(state);
+
+  for (const y of displayRange(state.board.height, perspective)) {
+    for (const x of displayRange(state.board.width, perspective)) {
       const square = document.createElement("button");
       square.type = "button";
       square.className = "square";
@@ -17,20 +25,26 @@ export function renderBoard(boardElement, state, uiState) {
         square.classList.add("selected");
       }
 
-      const legalMove = findLegalMoveTo(uiState, x, y);
-      if (legalMove) {
-        square.classList.add("legal");
-        if (getSquare(state, x, y)) {
-          square.classList.add("capture");
+      if (uiState.view?.showLegalMoves !== false) {
+        const legalMove = findLegalMoveTo(uiState, x, y);
+        if (legalMove) {
+          square.classList.add("legal");
+          if (getSquare(state, x, y)) {
+            square.classList.add("capture");
+          }
         }
       }
+
+      if (sameSquare(lastMove?.from, { x, y })) square.classList.add("last-move-from");
+      if (sameSquare(lastMove?.to, { x, y })) square.classList.add("last-move-to");
+      if (sameSquare(checkedRoyal, { x, y })) square.classList.add("royal-in-check");
 
       const piece = getSquare(state, x, y);
       if (piece?.owner === state.turn && state.status.type === "playing") {
         square.classList.add("active-turn-piece-square");
       }
       if (piece) {
-        square.appendChild(createPieceElement(state, piece));
+        square.appendChild(createPieceElement(state, piece, perspective));
       }
 
       boardElement.appendChild(square);
@@ -38,6 +52,10 @@ export function renderBoard(boardElement, state, uiState) {
   }
 }
 
+function displayRange(length, perspective) {
+  const values = Array.from({ length }, (_, index) => index);
+  return perspective === "white" ? values.reverse() : values;
+}
 
 function setBoardCssVariables(boardElement, state) {
   const targets = [
@@ -53,10 +71,11 @@ function setBoardCssVariables(boardElement, state) {
   }
 }
 
-function createPieceElement(state, piece) {
+function createPieceElement(state, piece, perspective) {
   const pieceDef = state.ruleset.pieces[piece.id];
   const element = document.createElement("span");
   element.className = `piece ${piece.owner}`;
+  if (perspective === "white") element.classList.add("viewer-white");
   if (piece.owner === state.turn && state.status.type === "playing") {
     element.classList.add("active-turn-piece");
   }
@@ -76,6 +95,32 @@ function isSelectedSquare(uiState, x, y) {
 
 function findLegalMoveTo(uiState, x, y) {
   return uiState.legalMoves.find(move => move.to.x === x && move.to.y === y);
+}
+
+function getLastMove(state) {
+  const entry = state.history.at(-1);
+  if (!entry?.move) return null;
+
+  if (entry.move.kind === "move") {
+    return { from: entry.move.from, to: entry.move.to };
+  }
+
+  if (entry.move.kind === "drop") {
+    return { from: null, to: entry.move.to };
+  }
+
+  return null;
+}
+
+function getCheckedRoyal(state) {
+  if (state.status.type !== "playing") return null;
+  if (!isInCheck(state, state.turn)) return null;
+  const royal = findRoyal(state, state.turn);
+  return royal ? { x: royal.x, y: royal.y } : null;
+}
+
+function sameSquare(a, b) {
+  return Boolean(a && b && a.x === b.x && a.y === b.y);
 }
 
 function createSquareLabel(state, x, y) {
