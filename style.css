@@ -2038,3 +2038,127 @@ textarea {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* v2.2 setup usability improvements */
+.setup-budget.ok { color: #1c6b32; }
+.setup-budget.low,
+.setup-budget.zero { color: #8a5a18; font-weight: 800; }
+.setup-budget.over { color: var(--danger); font-weight: 800; }
+
+.setup-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.setup-status-card {
+  padding: 8px 10px;
+  border: 1px solid #d7c8aa;
+  border-radius: 8px;
+  background: #fffdf7;
+}
+
+.setup-status-card.active {
+  border-color: var(--selected);
+  box-shadow: 0 0 0 2px rgb(45 108 223 / 14%);
+}
+
+.setup-status-card.finalized {
+  border-color: var(--legal);
+  background: rgb(28 143 58 / 8%);
+}
+
+.setup-status-card h4 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.setup-status-card p {
+  margin: 2px 0;
+  color: #444;
+  font-size: 13px;
+}
+
+.setup-warning-panel {
+  margin: 8px 0;
+  padding: 9px 11px;
+  border: 1px solid #d7c8aa;
+  border-left: 5px solid #8a5a18;
+  border-radius: 8px;
+  background: #fff8e6;
+}
+
+.setup-warning-panel.ok {
+  border-left-color: var(--legal);
+  background: rgb(28 143 58 / 8%);
+}
+
+.setup-warning-panel ul {
+  margin: 6px 0 0;
+  padding-left: 1.4em;
+}
+
+.setup-selected-table,
+.setup-pack-table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #fffdf7;
+  font-size: 13px;
+}
+
+.setup-selected-table th,
+.setup-selected-table td,
+.setup-pack-table th,
+.setup-pack-table td {
+  padding: 6px 7px;
+  border: 1px solid #d7c8aa;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.setup-selected-table th,
+.setup-pack-table th {
+  background: #f1e2c7;
+  font-weight: 800;
+}
+
+.compact-action {
+  min-height: 32px;
+  padding: 4px 7px;
+  font-size: 12px;
+}
+
+.setup-piece-button strong {
+  display: block;
+}
+
+.setup-piece-button span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.square.setup-zone::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 2px dashed rgb(45 108 223 / 32%);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.square.setup-placement::after {
+  background: rgb(45 108 223 / 40%);
+}
+
+@media (max-width: 760px) {
+  .setup-selected-table,
+  .setup-pack-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}

@@ -25,7 +25,7 @@ export const SETUP_SHOGI = {
     allowDropInPromotionZone: true
   },
 
-  handOrder: ["R", "B", "M", "F", "U", "Q", "D", "T", "X", "A", "C", "W", "G", "S", "N", "L", "P"],
+  handOrder: ["R", "B", "M", "F", "FG", "U", "Q", "D", "T", "X", "LH", "HB", "SC", "SH", "A", "C", "W", "G", "S", "N", "L", "P"],
 
   setup: {
     enabled: true,
@@ -33,7 +33,7 @@ export const SETUP_SHOGI = {
     flow: "simultaneous",
     budget: 18,
     requireRoyal: true,
-    allowedPieces: ["K", "R", "B", "M", "F", "U", "Q", "D", "T", "X", "A", "C", "W", "G", "S", "N", "L", "P"],
+    allowedPieces: ["K", "R", "B", "M", "F", "FG", "U", "Q", "D", "T", "X", "LH", "HB", "SC", "SH", "A", "C", "W", "G", "S", "N", "L", "P"],
     placementZones: {
       black: { yMin: 5, yMax: 6 },
       white: { yMin: 0, yMax: 1 }
@@ -56,6 +56,11 @@ export const SETUP_SHOGI = {
       A: 4,
       C: 4,
       W: 4,
+      SC: 4,
+      SH: 4,
+      HB: 3,
+      FG: 1,
+      LH: 2,
       P: 7,
       default: 4
     },
@@ -74,6 +79,11 @@ export const SETUP_SHOGI = {
         id: "trick",
         name: "特殊パック",
         pieces: { K: 1, X: 1, U: 1, T: 1, A: 2, P: 2 }
+      },
+      {
+        id: "new-units",
+        name: "新駒検証パック",
+        pieces: { K: 1, FG: 1, LH: 1, HB: 1, SC: 2, SH: 2 }
       }
     ],
     randomPack: {
@@ -85,6 +95,9 @@ export const SETUP_SHOGI = {
         { pieceId: "A", weight: 5 },
         { pieceId: "C", weight: 5 },
         { pieceId: "W", weight: 4 },
+        { pieceId: "SC", weight: 5 },
+        { pieceId: "SH", weight: 5 },
+        { pieceId: "HB", weight: 3 },
         { pieceId: "S", weight: 4 },
         { pieceId: "G", weight: 3 },
         { pieceId: "N", weight: 3 },
@@ -92,6 +105,8 @@ export const SETUP_SHOGI = {
         { pieceId: "B", weight: 2 },
         { pieceId: "R", weight: 2 },
         { pieceId: "M", weight: 2 },
+        { pieceId: "LH", weight: 2 },
+        { pieceId: "FG", weight: 2 },
         { pieceId: "F", weight: 1 },
         { pieceId: "U", weight: 1 },
         { pieceId: "Q", weight: 1 },

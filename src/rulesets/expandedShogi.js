@@ -46,6 +46,37 @@ const RUNNER_MOVES = [
   { kind: "step", dx: 1, fy: 0 }
 ];
 
+const SCOUT_MOVES = [
+  { kind: "step", dx: 0, fy: 1 },
+  { kind: "step", dx: -1, fy: 1 },
+  { kind: "step", dx: 1, fy: 1 },
+  { kind: "jump", dx: 0, fy: 2 }
+];
+
+const SHIELD_MOVES = [
+  { kind: "step", dx: 0, fy: 1 },
+  { kind: "step", dx: -1, fy: 0 },
+  { kind: "step", dx: 1, fy: 0 },
+  { kind: "step", dx: 0, fy: -1 }
+];
+
+const HORIZONTAL_SOLDIER_MOVES = [
+  { kind: "slide", dx: -1, dy: 0 },
+  { kind: "slide", dx: 1, dy: 0 },
+  { kind: "step", dx: 0, fy: 1 }
+];
+
+const LIGHT_HORSE_MOVES = [
+  { kind: "jump", dx: -1, fy: 2 },
+  { kind: "jump", dx: 1, fy: 2 },
+  { kind: "jump", dx: -2, fy: 1 },
+  { kind: "jump", dx: 2, fy: 1 },
+  { kind: "jump", dx: -1, fy: -2 },
+  { kind: "jump", dx: 1, fy: -2 },
+  { kind: "jump", dx: -2, fy: -1 },
+  { kind: "jump", dx: 2, fy: -1 }
+];
+
 function createExpandedInitialPieces() {
   const pieces = [
     { owner: "white", id: "L", x: 0, y: 0 },
@@ -64,20 +95,24 @@ function createExpandedInitialPieces() {
     { owner: "white", id: "M", x: 5, y: 1 },
     { owner: "white", id: "B", x: 9, y: 1 },
     { owner: "white", id: "W", x: 0, y: 2 },
+    { owner: "white", id: "SC", x: 1, y: 2 },
     { owner: "white", id: "Q", x: 2, y: 2 },
     { owner: "white", id: "D", x: 3, y: 2 },
     { owner: "white", id: "T", x: 4, y: 2 },
     { owner: "white", id: "F", x: 5, y: 2 },
     { owner: "white", id: "U", x: 6, y: 2 },
+    { owner: "white", id: "FG", x: 7, y: 2 },
     { owner: "white", id: "X", x: 8, y: 2 },
     { owner: "white", id: "W", x: 10, y: 2 },
 
     { owner: "black", id: "W", x: 0, y: 8 },
+    { owner: "black", id: "SC", x: 1, y: 8 },
     { owner: "black", id: "Q", x: 2, y: 8 },
     { owner: "black", id: "D", x: 3, y: 8 },
     { owner: "black", id: "T", x: 4, y: 8 },
     { owner: "black", id: "F", x: 5, y: 8 },
     { owner: "black", id: "U", x: 6, y: 8 },
+    { owner: "black", id: "FG", x: 7, y: 8 },
     { owner: "black", id: "X", x: 8, y: 8 },
     { owner: "black", id: "W", x: 10, y: 8 },
     { owner: "black", id: "B", x: 1, y: 9 },
@@ -115,7 +150,7 @@ export const EXPANDED_SHOGI = {
     height: 11
   },
 
-  handOrder: ["R", "B", "M", "F", "U", "Q", "D", "T", "X", "Y", "Z", "A", "C", "W", "G", "S", "N", "L", "P"],
+  handOrder: ["R", "B", "M", "F", "FG", "U", "Q", "D", "T", "X", "Y", "Z", "LH", "HB", "SC", "SH", "A", "C", "W", "G", "S", "N", "L", "P"],
 
   drops: {
     enabled: true,
@@ -349,6 +384,123 @@ export const EXPANDED_SHOGI = {
       droppable: true,
       capturedAs: "U",
       moves: MAGE_MOVES
+    },
+
+    SC: {
+      name: "斥候",
+      display: "斥",
+      description: "軽量機動枠。前方と斜め前へ1マス動き、前方2マスへ跳べる偵察駒。",
+      category: "minor",
+      point: 1,
+      attributes: ["scout"],
+      droppable: true,
+      capturedAs: "SC",
+      promotesTo: "PSC",
+      dropRules: ["notLastRank"],
+      moves: SCOUT_MOVES
+    },
+
+    PSC: {
+      name: "成斥候",
+      display: "斥+",
+      description: "斥候が成った駒。金と同じ動きになり、金属性を持つ。",
+      category: "promoted",
+      point: 1,
+      attributes: ["promoted", "goldLike"],
+      promoted: true,
+      droppable: false,
+      capturedAs: "SC",
+      moves: GOLD_MOVES
+    },
+
+    SH: {
+      name: "盾兵",
+      display: "盾",
+      description: "守備小駒枠。前後左右へ1マス動けるが、斜めには動けない防御向きの駒。",
+      category: "minor",
+      point: 1,
+      attributes: ["defender"],
+      droppable: true,
+      capturedAs: "SH",
+      promotesTo: "PSH",
+      moves: SHIELD_MOVES
+    },
+
+    PSH: {
+      name: "成盾兵",
+      display: "盾+",
+      description: "盾兵が成った駒。金と同じ動きになり、金属性を持つ。",
+      category: "promoted",
+      point: 1,
+      attributes: ["promoted", "goldLike"],
+      promoted: true,
+      droppable: false,
+      capturedAs: "SH",
+      moves: GOLD_MOVES
+    },
+
+    HB: {
+      name: "横兵",
+      display: "横",
+      description: "横制圧枠。左右へ走り、前へ1マス進める横方向制圧用の小駒。",
+      category: "minor",
+      point: 2,
+      attributes: ["sideControl"],
+      droppable: true,
+      capturedAs: "HB",
+      promotesTo: "PHB",
+      moves: HORIZONTAL_SOLDIER_MOVES
+    },
+
+    PHB: {
+      name: "成横兵",
+      display: "横+",
+      description: "横兵が成った駒。金と同じ動きになり、金属性を持つ。",
+      category: "promoted",
+      point: 2,
+      attributes: ["promoted", "goldLike"],
+      promoted: true,
+      droppable: false,
+      capturedAs: "HB",
+      moves: GOLD_MOVES
+    },
+
+    FG: {
+      name: "砦将",
+      display: "砦",
+      description: "金属性・対金剛枠。金属性を持つため、金剛を捕獲できる守備寄りの将。",
+      category: "special",
+      point: 3,
+      attributes: ["goldLike", "fortress"],
+      droppable: true,
+      capturedAs: "FG",
+      moves: GOLD_MOVES
+    },
+
+    LH: {
+      name: "軽馬",
+      display: "軽",
+      description: "ジャンプ機動枠。桂馬系の跳躍を前後左右に拡張した機動駒。",
+      category: "special",
+      point: 2,
+      attributes: ["jumper"],
+      droppable: true,
+      capturedAs: "LH",
+      promotesTo: "PLH",
+      moves: LIGHT_HORSE_MOVES
+    },
+
+    PLH: {
+      name: "成軽馬",
+      display: "軽+",
+      description: "軽馬が成った駒。金と同じ動きになり、金属性を持つ。",
+      category: "promoted",
+      point: 2,
+      attributes: ["promoted", "goldLike"],
+      promoted: true,
+      droppable: false,
+      capturedAs: "LH",
+      moves: GOLD_MOVES
     },
 
     W: {
