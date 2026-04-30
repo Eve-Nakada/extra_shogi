@@ -24,6 +24,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   let state = createState(currentRulesetId);
   const connectionLog = createConnectionLog({ maxEntries: 120 });
   let lastOnlineSnapshotText = "";
+  let pendingPromotionChoice = null;
 
   const onlineSession = new RtcGameSession({
     onSignal: text => {
@@ -88,6 +89,9 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
     elements.blackHand.addEventListener("click", handleHandClick);
     elements.whiteHand.addEventListener("click", handleHandClick);
+    elements.promotionPromoteButton.addEventListener("click", () => confirmPromotionChoice(true));
+    elements.promotionNormalButton.addEventListener("click", () => confirmPromotionChoice(false));
+    elements.promotionCancelButton.addEventListener("click", cancelPromotionChoice);
 
     elements.historyList.addEventListener("click", event => {
       if (onlineSession.isOnlineMode()) return;
@@ -284,9 +288,60 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   }
 
   function applySelectedMove(x, y) {
-    const move = chooseMoveForTarget(x, y);
-    if (!move) return;
+    const choice = chooseMoveForTarget(x, y);
+    if (!choice) return;
 
+    if (choice.kind === "promotion-choice") {
+      showPromotionChoice(choice);
+      return;
+    }
+
+    executeMove(choice);
+  }
+
+  function chooseMoveForTarget(x, y) {
+    const candidates = uiState.legalMoves.filter(move => move.to.x === x && move.to.y === y);
+    if (candidates.length === 0) return null;
+    if (candidates.length === 1) return candidates[0];
+    const promoted = candidates.find(move => move.promoteTo);
+    const normal = candidates.find(move => !move.promoteTo);
+    if (promoted && normal) {
+      return { kind: "promotion-choice", promoted, normal };
+    }
+    return candidates[0];
+  }
+
+  function showPromotionChoice(choice) {
+    pendingPromotionChoice = choice;
+    const piece = choice.promoted.kind === "move" ? getSquare(state, choice.promoted.from.x, choice.promoted.from.y) : null;
+    const beforeDef = piece ? state.ruleset.pieces[piece.id] : null;
+    const promotedDef = state.ruleset.pieces[choice.promoted.promoteTo];
+    const pieceLabel = beforeDef?.display ?? beforeDef?.name ?? "この駒";
+    const promotedLabel = promotedDef?.display ?? promotedDef?.name ?? "成駒";
+    elements.promotionText.textContent = pieceLabel + "を" + promotedLabel + "に成りますか？";
+    elements.promotionDialog.hidden = false;
+    elements.promotionPromoteButton.focus();
+  }
+
+  function confirmPromotionChoice(promote) {
+    if (!pendingPromotionChoice) return;
+    const move = promote ? pendingPromotionChoice.promoted : pendingPromotionChoice.normal;
+    closePromotionChoice();
+    executeMove(move);
+  }
+
+  function cancelPromotionChoice() {
+    closePromotionChoice();
+    clearSelection();
+    renderAll();
+  }
+
+  function closePromotionChoice() {
+    pendingPromotionChoice = null;
+    elements.promotionDialog.hidden = true;
+  }
+
+  function executeMove(move) {
     try {
       const mover = state.turn;
       applyMove(state, move);
@@ -303,16 +358,6 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     renderAll();
   }
 
-  function chooseMoveForTarget(x, y) {
-    const candidates = uiState.legalMoves.filter(move => move.to.x === x && move.to.y === y);
-    if (candidates.length === 0) return null;
-    if (candidates.length === 1) return candidates[0];
-    const promoted = candidates.find(move => move.promoteTo);
-    const normal = candidates.find(move => !move.promoteTo);
-    if (promoted && normal) return window.confirm("成りますか？") ? promoted : normal;
-    return candidates[0];
-  }
-
   function findSelectedMoveTo(x, y) {
     return uiState.legalMoves.find(move => move.to.x === x && move.to.y === y);
   }
@@ -320,6 +365,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   function clearSelection() {
     uiState.selected = null;
     uiState.legalMoves = [];
+    if (pendingPromotionChoice) closePromotionChoice();
   }
 
   function clearReplay() {
@@ -614,6 +660,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     renderHands(elements.whiteHand, displayState, "white", uiState);
     renderHands(elements.blackHand, displayState, "black", uiState);
     renderHistory(elements.historyList, state, uiState);
+    if (elements.historyCount) elements.historyCount.textContent = String(state.history.length) + "手";
 
     elements.status.textContent = createDisplayStatusText(displayState);
     elements.status.classList.toggle("check", isCurrentTurnInCheck(displayState));
@@ -647,7 +694,9 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     const side = elements.turnBar.querySelector("#turn-side");
 
     if (summary) {
-      const mode = isReplayMode() ? `再生 ${getReplayIndex()}/${state.history.length}` : `手数 ${ply}`;
+      const mode = isReplayMode()
+        ? `再生 ${getReplayIndex()}/${state.history.length}`
+        : `${ply}手目まで / 次は第${ply + 1}手`;
       const online = onlineSession.isOnlineMode()
         ? snapshot.spectating
           ? "観戦中"
@@ -659,7 +708,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     }
 
     if (side) {
-      side.textContent = isEnded ? "終局" : `${turnLabel}番`;
+      side.textContent = isEnded ? "終局" : `次の手番：${turnLabel}`;
     }
   }
 
