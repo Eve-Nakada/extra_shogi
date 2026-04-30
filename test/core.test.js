@@ -1,3 +1,4 @@
+ 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -523,4 +524,45 @@ test("v1.4 表示設定は不正値を安全な初期値へ寄せる", () => {
     confirmResign: true,
     confirmReset: true
   });
+});
+ 
+ 
+
+test("v1.5 標準駒定義は説明・分類・点数・属性を持つ", () => {
+  for (const [pieceId, pieceDef] of Object.entries(STANDARD_SHOGI.pieces)) {
+    assert.equal(typeof pieceDef.description, "string", `${pieceId}.description`);
+    assert.notEqual(pieceDef.description.length, 0, `${pieceId}.description`);
+    assert.equal(typeof pieceDef.category, "string", `${pieceId}.category`);
+    assert.equal(typeof pieceDef.point, "number", `${pieceId}.point`);
+    assert.equal(Array.isArray(pieceDef.attributes), true, `${pieceId}.attributes`);
+  }
+});
+
+test("v1.5 金・玉・成駒はgoldLike属性を持つ", () => {
+  const goldLikeIds = ["K", "G", "PR", "PB", "PS", "PN", "PL", "TO"];
+  for (const pieceId of goldLikeIds) {
+    assert.equal(STANDARD_SHOGI.pieces[pieceId].attributes.includes("goldLike"), true, pieceId);
+  }
+});
+
+test("v1.5 拡張駒定義も説明・分類・点数・属性を持つ", () => {
+  for (const [pieceId, pieceDef] of Object.entries(EXPANDED_SHOGI.pieces)) {
+    assert.equal(typeof pieceDef.description, "string", `${pieceId}.description`);
+    assert.equal(typeof pieceDef.category, "string", `${pieceId}.category`);
+    assert.equal(typeof pieceDef.point, "number", `${pieceId}.point`);
+    assert.equal(Array.isArray(pieceDef.attributes), true, `${pieceId}.attributes`);
+  }
+  assert.equal(EXPANDED_SHOGI.pieces.PC.attributes.includes("goldLike"), true);
+  assert.equal(EXPANDED_SHOGI.pieces.PW.attributes.includes("goldLike"), true);
+});
+
+test("v1.5 持将棋点数は駒定義のpointを参照する", () => {
+  const state = createEmptyState();
+  put(state, "black", "K", 4, 0);
+  put(state, "white", "K", 4, 8);
+  put(state, "black", "PR", 0, 0);
+  state.hands.black.B = 1;
+  state.hands.black.P = 3;
+
+  assert.equal(calculateImpasseScore(state, "black"), STANDARD_SHOGI.pieces.PR.point + STANDARD_SHOGI.pieces.B.point + 3);
 });

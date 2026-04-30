@@ -1,3 +1,4 @@
+ 
 import { getSquare, inBoard } from "./coordinates.js";
 
 export function generatePseudoMoves(state, selection) {
@@ -165,3 +166,5 @@ export function resolveDelta(moveDef, owner) {
 
   return { dx, dy };
 }
+ 
+ 

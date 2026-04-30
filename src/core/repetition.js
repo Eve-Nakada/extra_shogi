@@ -1,3 +1,4 @@
+ 
 import { applyMove } from "./applyMove.js";
 import { isInCheck } from "./check.js";
 import { createInitialState, cloneMove } from "./state.js";
@@ -89,3 +90,5 @@ function formatHand(hand) {
     .map(([pieceId, count]) => `${pieceId}${count}`)
     .join(",");
 }
+ 
+ 

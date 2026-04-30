@@ -1,3 +1,4 @@
+ 
 export function toIndex(x, y, width) {
   return y * width + x;
 }
@@ -35,3 +36,5 @@ export function setSquare(state, x, y, piece) {
 export function sameSquare(a, b) {
   return Boolean(a && b && a.x === b.x && a.y === b.y);
 }
+ 
+ 

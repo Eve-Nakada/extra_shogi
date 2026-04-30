@@ -1,3 +1,4 @@
+ 
 import { createInitialState } from "./core/state.js";
 import { RULESETS, RULESET_BY_ID } from "./rulesets/index.js";
 import { initController } from "./ui/controller.js";
@@ -67,7 +68,8 @@ const elements = {
   pingButton: document.getElementById("ping-button"),
   clearConnectionLogButton: document.getElementById("clear-connection-log-button"),
   connectionDetail: document.getElementById("connection-detail"),
-  connectionLog: document.getElementById("connection-log")
+  connectionLog: document.getElementById("connection-log"),
+  pieceGuideContent: document.getElementById("piece-guide-content")
 };
 
 for (const [name, element] of Object.entries(elements)) {
@@ -83,3 +85,5 @@ initController({
   rulesetsById: RULESET_BY_ID,
   defaultRulesetId: "standard-shogi"
 });
+ 
+ 

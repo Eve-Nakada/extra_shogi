@@ -1,3 +1,4 @@
+ 
 import { applyMove } from "../core/applyMove.js";
 import { updateGameStatus, resign } from "../core/gameStatus.js";
 import { getLegalMoves } from "../core/legalMoveFilter.js";
@@ -199,3 +200,5 @@ export function isCompatibleProtocol(version) {
   // v0.7 accepts v0.5/v0.6 messages. Older messages simply lack clock or sync-request fields.
   return version === 1 || version === 2 || version === WIRE_PROTOCOL_VERSION;
 }
+ 
+ 
