@@ -2,6 +2,7 @@
 import { applyAction, getAvailableTriggeredActions, getLegalActions } from "../core/action.js";
 import { createClock, formatClockMs, getDisplayRemainingMs, pauseClock, startClock, switchClockAfterMove, updateClock } from "../core/clock.js";
 import { getSquare } from "../core/coordinates.js";
+import { chooseNpcAction } from "../core/npc.js";
 import { createStatusText, declareImpasse, isCurrentTurnInCheck, resign, updateGameStatus } from "../core/gameStatus.js";
 import { parseGameRecord, restoreGameRecord, serializeGameRecord } from "../core/record.js";
 import { createKifLikeGameRecord } from "../core/notation.js";
@@ -29,6 +30,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   const connectionLog = createConnectionLog({ maxEntries: 120 });
   let lastOnlineSnapshotText = "";
   let pendingPromotionChoice = null;
+  let npcConfig = { player: "none", delayMs: 450, timerId: null };
 
   const onlineSession = new RtcGameSession({
     onSignal: text => {
@@ -68,10 +70,13 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     selected: null,
     legalMoves: [],
     specialActions: [],
+    displayedSpecialActions: [],
     setupSelectedPieceId: null,
     setupPlacements: [],
     multiMoveCompounds: [],
     multiMovePlan: null,
+    targetActionPlan: null,
+    inspected: null,
     replayIndex: null,
     readonly: false,
     view: loadViewPreferences()
@@ -104,6 +109,12 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.promotionCancelButton.addEventListener("click", cancelPromotionChoice);
     elements.specialActions.addEventListener("click", handleSpecialActionClick);
     elements.setupContent.addEventListener("click", handleSetupClick);
+    elements.npcPlayerSelect.addEventListener("change", () => {
+      npcConfig.player = elements.npcPlayerSelect.value;
+      clearSelection();
+      renderAll();
+      scheduleNpcMove();
+    });
     elements.boardPerspectiveSelect.addEventListener("change", () => {
       uiState.view.perspective = elements.boardPerspectiveSelect.value === "white" ? "white" : "black";
       saveCurrentViewPreferences();
@@ -156,6 +167,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       clearSelection();
       clearReplay();
       renderAll();
+      scheduleNpcMove();
     });
 
     elements.impasseButton.addEventListener("click", () => {
@@ -196,6 +208,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       clearSelection();
       clearReplay();
       renderAll();
+      scheduleNpcMove();
     });
 
     elements.undoButton.addEventListener("click", () => {
@@ -204,6 +217,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       clearSelection();
       clearReplay();
       renderAll();
+      scheduleNpcMove();
     });
 
     elements.replayStartButton.addEventListener("click", () => { if (!onlineSession.isOnlineMode()) setReplayIndex(0); });
@@ -298,33 +312,64 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function handleBoardClick(x, y) {
     if (isSetupActive(state)) return handleSetupBoardClick(x, y);
-    if (!canActOnCurrentTurn()) return;
-    if (uiState.multiMovePlan) return handleMultiMovePlanBoardClick(x, y);
-    const selectedMove = findSelectedMoveTo(x, y);
-    if (selectedMove) return applySelectedMove(x, y);
+    if (uiState.targetActionPlan && canActOnCurrentTurn()) return handleTargetActionPlanBoardClick(x, y);
+    if (uiState.multiMovePlan && canActOnCurrentTurn()) return handleMultiMovePlanBoardClick(x, y);
+    if (canActOnCurrentTurn()) {
+      const selectedMove = findSelectedMoveTo(x, y);
+      if (selectedMove) return applySelectedMove(x, y);
+    }
+
     const piece = getSquare(state, x, y);
-    if (piece?.owner === state.turn) return selectBoardPiece(x, y);
+    if (piece?.owner === state.turn && canActOnCurrentTurn()) return selectBoardPiece(x, y);
+    if (piece) return inspectBoardPiece(x, y);
     clearSelection();
     renderAll();
   }
 
   function handleHandClick(event) {
     const button = event.target.closest(".hand-piece");
-    if (!button || !canActOnCurrentTurn()) return;
+    if (!button) return;
     const owner = button.dataset.owner;
     const pieceId = button.dataset.pieceId;
-    if (owner === state.turn) selectHandPiece(owner, pieceId);
+    if (owner === state.turn && canActOnCurrentTurn()) return selectHandPiece(owner, pieceId);
+    inspectHandPiece(owner, pieceId);
   }
 
   function selectBoardPiece(x, y) {
     uiState.selected = { kind: "board", x, y };
+    uiState.inspected = null;
     setActionsForSelection(uiState.selected);
+    renderAll();
+  }
+
+  function inspectBoardPiece(x, y) {
+    uiState.selected = { kind: "board", x, y };
+    uiState.inspected = { kind: "board", x, y };
+    uiState.legalMoves = [];
+    uiState.specialActions = [];
+    uiState.displayedSpecialActions = [];
+    uiState.multiMoveCompounds = [];
+    uiState.multiMovePlan = null;
+    uiState.targetActionPlan = null;
     renderAll();
   }
 
   function selectHandPiece(owner, pieceId) {
     uiState.selected = { kind: "hand", owner, pieceId };
+    uiState.inspected = null;
     setActionsForSelection(uiState.selected);
+    renderAll();
+  }
+
+  function inspectHandPiece(owner, pieceId) {
+    uiState.selected = { kind: "hand", owner, pieceId };
+    uiState.inspected = { kind: "hand", owner, pieceId };
+    uiState.legalMoves = [];
+    uiState.specialActions = [];
+    uiState.displayedSpecialActions = [];
+    uiState.multiMoveCompounds = [];
+    uiState.multiMovePlan = null;
+    uiState.targetActionPlan = null;
     renderAll();
   }
 
@@ -402,6 +447,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     clearSelection();
     clearReplay();
     renderAll();
+    scheduleNpcMove();
   }
 
   function findSelectedMoveTo(x, y) {
@@ -410,10 +456,13 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
   function clearSelection() {
     uiState.selected = null;
+    uiState.inspected = null;
     uiState.legalMoves = [];
     uiState.specialActions = [];
+    uiState.displayedSpecialActions = [];
     uiState.multiMoveCompounds = [];
     uiState.multiMovePlan = null;
+    uiState.targetActionPlan = null;
     uiState.setupSelectedPieceId = null;
     uiState.setupPlacements = [];
     if (pendingPromotionChoice) closePromotionChoice();
@@ -447,6 +496,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   function canActOnCurrentTurn() {
     if (isSetupActive(state)) return false;
     if (state.status.type !== "playing" || isReplayMode()) return false;
+    if (isNpcTurn()) return false;
     if (!onlineSession.isOnlineMode()) return true;
     const snapshot = onlineSession.getSnapshot();
     if (snapshot.spectating) return false;
@@ -755,6 +805,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     renderViewOptions();
     renderActionButtons();
     renderOnlinePanel();
+    renderNpcPanel();
     renderConnectionLog(elements.connectionLog, connectionLog);
     renderPieceGuide(elements.pieceGuideContent, displayState.ruleset);
     renderSelectedPieceGuide(elements.selectedPieceGuide, displayState, uiState.selected);
@@ -809,7 +860,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
           : snapshot.connected
             ? (snapshot.localPlayer === state.turn ? "あなたの手番" : "相手の手番")
             : "通信準備中"
-        : "ローカル対局";
+        : isNpcTurn() ? "NPC思考中" : "ローカル対局";
       summary.textContent = `${mode} / ${online}${inCheck ? " / 王手" : ""}`;
     }
 
@@ -873,6 +924,12 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.replayEndButton.disabled = disableReplay || !isReplayMode();
   }
 
+  function renderNpcPanel() {
+    if (!elements.npcPlayerSelect) return;
+    elements.npcPlayerSelect.value = npcConfig.player;
+    elements.npcPlayerSelect.disabled = onlineSession.isOnlineMode() || isReplayMode();
+  }
+
   function renderOnlinePanel() {
     const snapshot = onlineSession.getSnapshot();
     const onlineMode = onlineSession.isOnlineMode();
@@ -900,15 +957,22 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     uiState.multiMoveCompounds = actions.filter(action => action.kind === "compound");
     uiState.specialActions = actions.filter(action => action.kind === "transform" || action.kind === "buildBase");
     uiState.multiMovePlan = null;
+    uiState.targetActionPlan = null;
   }
 
   function handleSpecialActionClick(event) {
     const button = event.target.closest(".special-action-button");
     if (!button || !canActOnCurrentTurn()) return;
     const index = Number(button.dataset.actionIndex);
-    const action = uiState.specialActions[index];
+    const action = uiState.displayedSpecialActions[index] ?? uiState.specialActions[index];
     if (!action) return;
     if (action.kind === "multiMoveStop") return executeMove(action.move);
+    if (action.kind === "targetPlanCancel") {
+      clearSelection();
+      renderAll();
+      return;
+    }
+    if (action.kind === "targetPlan") return startTargetActionPlan(action);
     executeMove(action);
   }
 
@@ -924,10 +988,8 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       return;
     }
 
-    const selectedActions = uiState.specialActions.filter(action => action.kind === "transform" || action.kind === "buildBase" || action.kind === "multiMoveStop");
-    const triggered = uiState.multiMovePlan ? [] : getAvailableTriggeredActions(state, state.turn);
-    const actions = [...selectedActions, ...triggered];
-    uiState.specialActions = actions;
+    const actions = createDisplayedSelectedActions(displayState);
+    uiState.displayedSpecialActions = actions;
 
     if (actions.length === 0) {
       const empty = document.createElement("p");
@@ -947,7 +1009,41 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     });
   }
 
+  function createDisplayedSelectedActions(displayState) {
+    if (uiState.targetActionPlan) {
+      return [{ kind: "targetPlanCancel", label: uiState.targetActionPlan.kind === "buildBase" ? "建設をキャンセル" : "昇格をキャンセル" }];
+    }
+
+    const actions = [];
+    actions.push(...uiState.specialActions.filter(action => action.kind === "transform"));
+
+    const buildBaseActions = uiState.specialActions.filter(action => action.kind === "buildBase");
+    if (buildBaseActions.length > 0) {
+      const baseType = buildBaseActions[0].baseType;
+      actions.push({ kind: "targetPlan", targetKind: "buildBase", actions: buildBaseActions, baseType });
+    }
+
+    actions.push(...uiState.specialActions.filter(action => action.kind === "multiMoveStop"));
+
+    if (!uiState.multiMovePlan && uiState.selected?.kind === "board") {
+      const triggered = getAvailableTriggeredActions(displayState, displayState.turn)
+        .filter(action => action.kind === "triggerEffect" && action.source?.x === uiState.selected.x && action.source?.y === uiState.selected.y);
+      if (triggered.length > 0) {
+        actions.push({ kind: "targetPlan", targetKind: "triggerEffect", effectKind: "promoteNearby", actions: triggered });
+      }
+    }
+
+    return actions;
+  }
+
   function createSpecialActionLabel(state, action) {
+    if (action.kind === "targetPlanCancel") return action.label;
+    if (action.kind === "targetPlan" && action.targetKind === "triggerEffect") return "周囲の駒を昇格させる";
+    if (action.kind === "targetPlan" && action.targetKind === "buildBase") {
+      const baseDef = state.ruleset.baseDefs?.[action.baseType] ?? state.ruleset.bases?.[action.baseType];
+      return `${baseDef?.display ?? action.baseType}を建設する`;
+    }
+
     if (action.kind === "transform") {
       const before = getSquare(state, action.from.x, action.from.y);
       const beforeDef = before ? state.ruleset.pieces[before.id] : null;
@@ -980,6 +1076,43 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     return "特殊アクション";
   }
 
+  function startTargetActionPlan(planAction) {
+    if (planAction.targetKind === "buildBase") {
+      uiState.targetActionPlan = { kind: "buildBase", actions: planAction.actions };
+      uiState.legalMoves = planAction.actions;
+      uiState.specialActions = [{ kind: "targetPlanCancel", label: "建設をキャンセル" }];
+      setMessage("建設するマスを盤面で選んでください。キャンセルもできます。");
+      renderAll();
+      return;
+    }
+
+    if (planAction.targetKind === "triggerEffect") {
+      const actions = planAction.actions.map(action => ({ ...action, to: { ...action.target } }));
+      uiState.targetActionPlan = { kind: "triggerEffect", actions };
+      uiState.legalMoves = actions;
+      uiState.specialActions = [{ kind: "targetPlanCancel", label: "昇格をキャンセル" }];
+      setMessage("昇格させる対象の駒を盤面で選んでください。キャンセルもできます。");
+      renderAll();
+    }
+  }
+
+  function handleTargetActionPlanBoardClick(x, y) {
+    const action = uiState.targetActionPlan?.actions?.find(candidate => {
+      const target = candidate.kind === "triggerEffect" ? candidate.target : candidate.to;
+      return target?.x === x && target?.y === y;
+    });
+    if (!action) {
+      const piece = getSquare(state, x, y);
+      if (piece) return inspectBoardPiece(x, y);
+      return;
+    }
+
+    const executable = action.kind === "triggerEffect"
+      ? { kind: "triggerEffect", effectKind: action.effectKind, source: { ...action.source }, target: { ...action.target }, promoteTo: action.promoteTo }
+      : action;
+    executeMove(executable);
+  }
+
   function formatActionPath(action) {
     if (action?.kind === "move") return `${action.from.x + 1},${action.from.y + 1}-${action.to.x + 1},${action.to.y + 1}${action.promoteTo ? "成" : ""}`;
     return action?.kind ?? "?";
@@ -996,7 +1129,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       base += " / 追加行動中";
     }
 
-    if (!onlineSession.isOnlineMode()) return base;
+    if (!onlineSession.isOnlineMode()) return isNpcTurn() ? `${base} / NPC思考中` : base;
     const snapshot = onlineSession.getSnapshot();
     if (snapshot.spectating) return `${base} / 観戦中`;
     if (!snapshot.connected) return `${base} / 通信準備中`;
@@ -1127,6 +1260,49 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     if (result.reason === "illegal_move") return "通信で受信した指し手が現在局面の合法手ではありません。局面同期を実行してください。";
     if (result.reason === "turn") return `通信手番ずれ：期待 ${playerName(result.expectedPlayer)} / 受信 ${playerName(result.actualPlayer)}`;
     return `通信メッセージを反映できません: ${result.reason}`;
+  }
+
+  function isNpcTurn() {
+    if (onlineSession.isOnlineMode() || isReplayMode() || isSetupActive(state)) return false;
+    if (state.status.type !== "playing") return false;
+    return npcConfig.player === state.turn || npcConfig.player === "both";
+  }
+
+  function scheduleNpcMove() {
+    if (npcConfig.timerId) {
+      window.clearTimeout(npcConfig.timerId);
+      npcConfig.timerId = null;
+    }
+    if (!isNpcTurn()) return;
+    npcConfig.timerId = window.setTimeout(runNpcMove, npcConfig.delayMs);
+  }
+
+  function runNpcMove() {
+    npcConfig.timerId = null;
+    if (!isNpcTurn()) return;
+    const action = chooseNpcAction(state, state.turn);
+    if (!action) {
+      updateGameStatus(state);
+      renderAll();
+      return;
+    }
+    const mover = state.turn;
+    const wasExtraAction = isExtraActionTurnState(state.turnState);
+    try {
+      applyAction(state, action);
+      if (!isExtraActionTurnState(state.turnState) && !wasExtraAction) switchClockAfterMove(state.clock, mover, state.ruleset);
+      if (wasExtraAction) switchClockAfterMove(state.clock, mover, state.ruleset);
+      updateGameStatus(state);
+      applyFlagFallStatus();
+      clearSelection();
+      clearReplay();
+      renderAll();
+      setMessage(`NPC（${playerName(mover)}）が指しました。`);
+      scheduleNpcMove();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+      renderAll();
+    }
   }
 
   function addLog(direction, type, text, detail = null) {
