@@ -802,7 +802,7 @@ test("v1.9 buildBase actionは通信比較できる", () => {
 });
 
 import { SETUP_SHOGI } from "../src/rulesets/setupShogi.js";
-import { addSetupPiece, applyPlacement, canFinalizeSetupPlayer, finalizeSetupPlayer, generateRandomPacks, getLegalPlacements, getSetupPlayer, isSetupActive, selectFixedPack, selectGeneratedPack } from "../src/core/setup.js";
+import { addSetupPiece, applyPlacement, canFinalizeSetupPlayer, finalizeSetupPlayer, generateRandomPacks, getLegalPlacements, getSelectedSetupCost, getSetupBudget, getSetupPlayer, isSetupActive, selectFixedPack, selectGeneratedPack } from "../src/core/setup.js";
 
 test("v2.0 編成検証ルールセットはsetup phaseから開始する", () => {
   const state = createInitialState(SETUP_SHOGI);
@@ -926,4 +926,36 @@ test("v2.1 編成完了後の初期局面をリプレイ基準局面として保
 
   const text = createTextGameRecord(state);
   assert.equal(text.includes("編成履歴"), true);
+});
+
+
+test("v2.2 追加駒5種は拡張ルールセットに定義され、編成対象になる", () => {
+  for (const pieceId of ["SC", "SH", "HB", "FG", "LH"]) {
+    assert.ok(EXPANDED_SHOGI.pieces[pieceId], `${pieceId} should exist`);
+    assert.equal(SETUP_SHOGI.setup.allowedPieces.includes(pieceId), true);
+  }
+
+  assert.equal(EXPANDED_SHOGI.pieces.SC.name, "斥候");
+  assert.equal(EXPANDED_SHOGI.pieces.SH.name, "盾兵");
+  assert.equal(EXPANDED_SHOGI.pieces.HB.name, "横兵");
+  assert.equal(EXPANDED_SHOGI.pieces.FG.attributes.includes("goldLike"), true);
+  assert.equal(EXPANDED_SHOGI.pieces.LH.moves.every(move => move.kind === "jump"), true);
+});
+
+test("v2.2 砦将は金属性により金剛を捕獲でき、斥候は捕獲できない", () => {
+  const state = createEmptyState(EXPANDED_SHOGI);
+  const fortress = { owner: "black", id: "FG" };
+  const scout = { owner: "black", id: "SC" };
+  const kongou = { owner: "white", id: "F" };
+
+  assert.equal(canCapture(state, fortress, kongou, { attackerSquare: { x: 0, y: 0 }, defenderSquare: { x: 0, y: 1 } }), true);
+  assert.equal(canCapture(state, scout, kongou, { attackerSquare: { x: 0, y: 0 }, defenderSquare: { x: 0, y: 1 } }), false);
+});
+
+test("v2.2 新駒検証パックは点数内で選択できる", () => {
+  const state = createInitialState(SETUP_SHOGI);
+  selectFixedPack(state, "new-units", "black");
+
+  assert.deepEqual(state.setup.selectedPieces.black, { K: 1, FG: 1, LH: 1, HB: 1, SC: 2, SH: 2 });
+  assert.equal(getSelectedSetupCost(state, "black") <= getSetupBudget(state), true);
 });

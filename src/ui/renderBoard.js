@@ -30,6 +30,9 @@ export function renderBoard(boardElement, state, uiState) {
       if (uiState.view?.showLegalMoves !== false) {
         const legalMove = findLegalMoveTo(uiState, x, y);
         const setupPlacement = findSetupPlacementTo(uiState, x, y);
+        if (isSetupZoneSquare(state, uiState, x, y)) {
+          square.classList.add("setup-zone");
+        }
         if (setupPlacement) {
           square.classList.add("legal", "setup-placement");
         }
@@ -180,4 +183,17 @@ function createSquareLabel(state, x, y) {
 
 function findSetupPlacementTo(uiState, x, y) {
   return (uiState.setupPlacements ?? []).find(action => action.to.x === x && action.to.y === y);
+}
+
+
+function isSetupZoneSquare(state, uiState, x, y) {
+  if (state.phase !== "setup" || !state.setup) return false;
+  const player = uiState.setupPlayer ?? state.setup.currentPlayer ?? state.turn;
+  const zone = state.ruleset.setup?.placementZones?.[player];
+  if (!zone) return false;
+  if (zone.xMin != null && x < zone.xMin) return false;
+  if (zone.xMax != null && x > zone.xMax) return false;
+  if (zone.yMin != null && y < zone.yMin) return false;
+  if (zone.yMax != null && y > zone.yMax) return false;
+  return true;
 }
