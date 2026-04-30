@@ -8,6 +8,7 @@ import { createKifLikeGameRecord } from "../core/notation.js";
 import { completeGameMeta, normalizeGameMeta } from "../core/meta.js";
 import { replayHistory } from "../core/replay.js";
 import { isExtraActionTurnState, opposite, playerName } from "../core/state.js";
+import { addSetupPiece, applyPlacement, finalizeSetupPlayer, generateRandomPacks, getLegalPlacements, getSetupPlayer, isSetupActive, removeSetupPiece, removeSetupPlacementAt, selectFixedPack, selectGeneratedPack } from "../core/setup.js";
 import { undoLastMove } from "../core/undo.js";
 import { applyIncomingClock, applyIncomingMove, applyIncomingResign, createClockMessage, createMoveMessage, createPingMessage, createPongMessage, createResignMessage, createSyncMessage, createSyncRequestMessage } from "../net/gameSync.js";
 import { createConnectionLog, addConnectionLog, clearConnectionLog, createSnapshotText, summarizeMessage } from "../net/connectionLog.js";
@@ -17,6 +18,7 @@ import { renderHands } from "./renderHands.js";
 import { renderHistory } from "./renderHistory.js";
 import { renderConnectionLog } from "./renderConnectionLog.js";
 import { renderPieceGuide } from "./renderPieceGuide.js";
+import { renderSetupPanel } from "./renderSetupPanel.js";
 import { loadViewPreferences, saveViewPreferences } from "./viewPreferences.js";
 
 const LOCAL_SAVE_KEY = "shogi-html:last-game";
@@ -66,6 +68,8 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     selected: null,
     legalMoves: [],
     specialActions: [],
+    setupSelectedPieceId: null,
+    setupPlacements: [],
     replayIndex: null,
     readonly: false,
     view: loadViewPreferences()
@@ -97,6 +101,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.promotionNormalButton.addEventListener("click", () => confirmPromotionChoice(false));
     elements.promotionCancelButton.addEventListener("click", cancelPromotionChoice);
     elements.specialActions.addEventListener("click", handleSpecialActionClick);
+    elements.setupContent.addEventListener("click", handleSetupClick);
     elements.boardPerspectiveSelect.addEventListener("change", () => {
       uiState.view.perspective = elements.boardPerspectiveSelect.value === "white" ? "white" : "black";
       saveCurrentViewPreferences();
@@ -290,6 +295,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   }
 
   function handleBoardClick(x, y) {
+    if (isSetupActive(state)) return handleSetupBoardClick(x, y);
     if (!canActOnCurrentTurn()) return;
     const selectedMove = findSelectedMoveTo(x, y);
     if (selectedMove) return applySelectedMove(x, y);
@@ -400,6 +406,8 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     uiState.selected = null;
     uiState.legalMoves = [];
     uiState.specialActions = [];
+    uiState.setupSelectedPieceId = null;
+    uiState.setupPlacements = [];
     if (pendingPromotionChoice) closePromotionChoice();
   }
 
@@ -429,6 +437,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   }
 
   function canActOnCurrentTurn() {
+    if (isSetupActive(state)) return false;
     if (state.status.type !== "playing" || isReplayMode()) return false;
     if (!onlineSession.isOnlineMode()) return true;
     const snapshot = onlineSession.getSnapshot();
@@ -708,6 +717,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     renderOnlinePanel();
     renderConnectionLog(elements.connectionLog, connectionLog);
     renderPieceGuide(elements.pieceGuideContent, displayState.ruleset);
+    renderSetupPanel(elements.setupPanel, elements.setupContent, displayState, uiState);
     renderSpecialActions(displayState);
   }
 
@@ -743,11 +753,13 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     const side = elements.turnBar.querySelector("#turn-side");
 
     if (summary) {
-      const mode = isReplayMode()
-        ? `再生 ${getReplayIndex()}/${state.history.length}`
-        : isExtraActionTurnState(displayState.turnState)
-          ? `${ply}手目まで / 追加行動中`
-          : `${ply}手目まで / 次は第${ply + 1}手`;
+      const mode = isSetupActive(displayState)
+        ? `${playerName(getSetupPlayer(displayState))}の編成中`
+        : isReplayMode()
+          ? `再生 ${getReplayIndex()}/${state.history.length}`
+          : isExtraActionTurnState(displayState.turnState)
+            ? `${ply}手目まで / 追加行動中`
+            : `${ply}手目まで / 次は第${ply + 1}手`;
       const online = onlineSession.isOnlineMode()
         ? snapshot.spectating
           ? "観戦中"
@@ -759,7 +771,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     }
 
     if (side) {
-      side.textContent = isEnded ? "終局" : `次の手番：${turnLabel}`;
+      side.textContent = isSetupActive(displayState) ? `編成：${playerName(getSetupPlayer(displayState))}` : (isEnded ? "終局" : `次の手番：${turnLabel}`);
     }
   }
 
@@ -806,7 +818,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.clockApplyButton.disabled = onlineMode || isReplayMode();
     elements.clockPauseButton.disabled = !state.clock?.config?.enabled;
 
-    elements.impasseButton.disabled = state.status.type !== "playing" || isReplayMode() || (onlineMode && !onlineConnected);
+    elements.impasseButton.disabled = state.status.type !== "playing" || state.phase === "setup" || isReplayMode() || (onlineMode && !onlineConnected);
     elements.resignButton.disabled = !canResign;
     elements.resignButton.textContent = `${playerName(getLocalResigningPlayer())} 投了`;
 
@@ -826,9 +838,9 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.onlineGameId.textContent = snapshot.gameId ? snapshot.gameId.slice(0, 8) : "-";
     elements.connectionDetail.textContent = createSnapshotText(snapshot);
 
-    elements.hostOfferButton.disabled = onlineMode || isReplayMode();
-    elements.guestAnswerButton.disabled = onlineMode || isReplayMode();
-    elements.spectatorAnswerButton.disabled = onlineMode || isReplayMode();
+    elements.hostOfferButton.disabled = onlineMode || isReplayMode() || isSetupActive(state);
+    elements.guestAnswerButton.disabled = onlineMode || isReplayMode() || isSetupActive(state);
+    elements.spectatorAnswerButton.disabled = onlineMode || isReplayMode() || isSetupActive(state);
     elements.hostAcceptAnswerButton.disabled = !(snapshot.role && (snapshot.status === "waiting-answer" || snapshot.status === "waiting-connect"));
     elements.reconnectOfferButton.disabled = !(snapshot.gameId && (snapshot.status === "disconnected" || snapshot.status === "failed"));
     elements.copySignalButton.disabled = !elements.signalOutput.value;
@@ -924,6 +936,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   }
 
   function createDisplayStatusText(displayState) {
+    if (isSetupActive(displayState)) return `${playerName(getSetupPlayer(displayState))}の編成フェーズ`;
     let base;
     base = isReplayMode()
       ? `${createStatusText(displayState)} / 再生 ${uiState.replayIndex}/${state.history.length}`
@@ -960,6 +973,63 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     if (snapshot.spectating) return "観戦者 / 読み取り専用";
     const role = snapshot.role === "host" || snapshot.role === "spectator-host" ? "ホスト" : "ゲスト";
     return `${role} / ${playerName(snapshot.localPlayer)}`;
+  }
+
+  function handleSetupClick(event) {
+    const button = event.target.closest("[data-setup-action]");
+    if (!button || !isSetupActive(state) || onlineSession.isOnlineMode()) return;
+
+    try {
+      const action = button.dataset.setupAction;
+      const pieceId = button.dataset.pieceId;
+      if (action === "add-piece") addSetupPiece(state, pieceId);
+      if (action === "remove-piece") removeSetupPiece(state, pieceId);
+      if (action === "select-fixed-pack") selectFixedPack(state, button.dataset.packId);
+      if (action === "generate-random-packs") generateRandomPacks(state);
+      if (action === "select-random-pack") selectGeneratedPack(state, button.dataset.packId);
+      if (action === "select-placement-piece") {
+        uiState.setupSelectedPieceId = pieceId;
+        uiState.setupPlacements = getLegalPlacements(state, pieceId, getSetupPlayer(state));
+      }
+      if (action === "finalize") {
+        finalizeSetupPlayer(state);
+        uiState.setupSelectedPieceId = null;
+        uiState.setupPlacements = [];
+        if (!isSetupActive(state) && state.clock?.config?.enabled) startClock(state.clock, state.turn);
+      }
+      renderAll();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+      renderAll();
+    }
+  }
+
+  function handleSetupBoardClick(x, y) {
+    if (onlineSession.isOnlineMode() || isReplayMode()) return;
+
+    try {
+      const player = getSetupPlayer(state);
+      if (removeSetupPlacementAt(state, x, y, player)) {
+        uiState.setupPlacements = uiState.setupSelectedPieceId ? getLegalPlacements(state, uiState.setupSelectedPieceId, player) : [];
+        renderAll();
+        return;
+      }
+
+      if (!uiState.setupSelectedPieceId) {
+        setMessage("配置する駒を編成パネルで選んでください。");
+        renderAll();
+        return;
+      }
+
+      const placement = { kind: "placement", player, pieceId: uiState.setupSelectedPieceId, to: { x, y } };
+      applyPlacement(state, placement);
+      uiState.setupPlacements = getLegalPlacements(state, uiState.setupSelectedPieceId, player);
+      if (uiState.setupPlacements.length === 0) uiState.setupSelectedPieceId = null;
+      renderAll();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+      renderAll();
+    }
   }
 
   function createIncomingErrorText(result) {

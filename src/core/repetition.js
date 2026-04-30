@@ -22,6 +22,7 @@ export function createPositionHash(state) {
 
   return [
     `ruleset=${state.rulesetId}`,
+    `phase=${state.phase ?? "playing"}`,
     `turn=${state.turn}`,
     `turnState=${turnStatePart}`,
     `board=${boardPart}`,

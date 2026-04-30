@@ -5,7 +5,7 @@ import { getLegalMoves, isBasicLegal, isSelectionAllowedByTurnState, leavesOwnRo
 import { isExtraActionTurnState } from "./state.js";
 
 export function getLegalActions(state, selection, options = {}) {
-  if (state.status.type !== "playing") return [];
+  if (state.status.type !== "playing" || state.phase === "setup") return [];
   if (!isSelectionAllowedByTurnState(state, selection)) return [];
 
   const actions = [
@@ -117,7 +117,7 @@ export function getLegalCompoundActions(state, selection, options = {}) {
 }
 
 export function getAvailableTriggeredActions(state, player = state.turn) {
-  if (state.status.type !== "playing") return [];
+  if (state.status.type !== "playing" || state.phase === "setup") return [];
   if (isExtraActionTurnState(state.turnState)) return [];
 
   const actions = [];

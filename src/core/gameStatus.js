@@ -6,7 +6,7 @@ import { detectRepetition } from "./repetition.js";
 import { evaluateImpasse } from "./impasse.js";
 
 export function updateGameStatus(state) {
-  if (state.status.type !== "playing") return state.status;
+  if (state.status.type !== "playing" || state.phase === "setup") return state.status;
 
   const playerToMove = state.turn;
   if (isCheckmate(state, playerToMove)) {

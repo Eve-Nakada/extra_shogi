@@ -29,6 +29,10 @@ export function renderBoard(boardElement, state, uiState) {
 
       if (uiState.view?.showLegalMoves !== false) {
         const legalMove = findLegalMoveTo(uiState, x, y);
+        const setupPlacement = findSetupPlacementTo(uiState, x, y);
+        if (setupPlacement) {
+          square.classList.add("legal", "setup-placement");
+        }
         if (legalMove) {
           square.classList.add("legal");
           if (getSquare(state, x, y)) {
@@ -173,3 +177,7 @@ function createSquareLabel(state, x, y) {
 }
  
  
+
+function findSetupPlacementTo(uiState, x, y) {
+  return (uiState.setupPlacements ?? []).find(action => action.to.x === x && action.to.y === y);
+}

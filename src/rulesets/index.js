@@ -1,10 +1,12 @@
  
 import { STANDARD_SHOGI } from "./standardShogi.js";
 import { EXPANDED_SHOGI } from "./expandedShogi.js";
+import { SETUP_SHOGI } from "./setupShogi.js";
 
 export const RULESETS = [
   STANDARD_SHOGI,
-  EXPANDED_SHOGI
+  EXPANDED_SHOGI,
+  SETUP_SHOGI
 ];
 
 export const RULESET_BY_ID = Object.fromEntries(

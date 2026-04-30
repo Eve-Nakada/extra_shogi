@@ -70,7 +70,9 @@ const elements = {
   connectionDetail: document.getElementById("connection-detail"),
   connectionLog: document.getElementById("connection-log"),
   pieceGuideContent: document.getElementById("piece-guide-content"),
-  specialActions: document.getElementById("special-actions")
+  specialActions: document.getElementById("special-actions"),
+  setupPanel: document.getElementById("setup-panel"),
+  setupContent: document.getElementById("setup-content")
 };
 
 for (const [name, element] of Object.entries(elements)) {
