@@ -1,4 +1,3 @@
- 
 const GOLD_MOVES = [
   { kind: "step", dx: 0, fy: 1 },
   { kind: "step", dx: -1, fy: 1 },
@@ -318,5 +317,3 @@ export const STANDARD_SHOGI = {
     { owner: "black", id: "L", x: 8, y: 8 }
   ]
 };
- 
- 

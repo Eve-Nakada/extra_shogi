@@ -1,4 +1,3 @@
- 
 export function createConnectionLog(options = {}) {
   return {
     maxEntries: Math.max(1, Number(options.maxEntries ?? 80)),
@@ -73,5 +72,3 @@ export function createSnapshotText(snapshot) {
 
   return parts.join(" / ");
 }
- 
- 

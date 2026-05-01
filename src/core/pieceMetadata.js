@@ -8,6 +8,12 @@ export const CATEGORY_LABELS = {
   air: "空中系"
 };
 
+export const USAGE_LABELS = {
+  standard: "標準駒",
+  practical: "実戦用",
+  test: "開発用"
+};
+
 export const ATTRIBUTE_LABELS = {
   royal: "王性",
   goldLike: "金属性",
@@ -25,6 +31,10 @@ export function getPieceCategoryLabel(category) {
 
 export function getPieceAttributeLabel(attribute) {
   return ATTRIBUTE_LABELS[attribute] ?? attribute;
+}
+
+export function getPieceUsageLabel(usage) {
+  return USAGE_LABELS[usage ?? "standard"] ?? usage ?? "標準駒";
 }
 
 export function getPieceAttributes(ruleset, pieceId, context = {}) {

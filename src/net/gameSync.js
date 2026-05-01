@@ -1,4 +1,3 @@
- 
 import { applyMove } from "../core/applyMove.js";
 import { updateGameStatus, resign } from "../core/gameStatus.js";
 import { getLegalActions } from "../core/action.js";
@@ -299,5 +298,3 @@ export function isCompatibleProtocol(version) {
 function restoreSetupRecord(record, rulesetsById) {
   return restoreGameRecord(record, rulesetsById);
 }
- 
- 

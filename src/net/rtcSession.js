@@ -1,4 +1,3 @@
- 
 const DEFAULT_ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" }
 ];
@@ -349,5 +348,3 @@ export function canAcceptSignalForCurrentSession(signal, snapshot = {}) {
   if (parsed.type === "offer") return true;
   return parsed.gameId === snapshot.gameId;
 }
- 
- 

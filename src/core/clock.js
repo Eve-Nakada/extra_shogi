@@ -1,4 +1,3 @@
- 
 import { opposite } from "./state.js";
 
 export const DEFAULT_CLOCK_CONFIG = {
@@ -118,5 +117,3 @@ function commitElapsed(clock, now) {
     clock.flagFallPlayer = player;
   }
 }
- 
- 

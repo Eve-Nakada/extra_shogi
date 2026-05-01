@@ -1,4 +1,3 @@
- 
 import { applyMove } from "./applyMove.js";
 import { createInitialState, cloneHistoryEntry as cloneStateHistoryEntry, cloneMove } from "./state.js";
 import { cloneInitialPositionSnapshot } from "./setup.js";
@@ -44,5 +43,3 @@ function restoreInitialPosition(state, snapshot) {
 export function cloneHistoryEntry(entry) {
   return cloneStateHistoryEntry(entry);
 }
- 
- 
