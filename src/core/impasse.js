@@ -1,4 +1,3 @@
- 
 import { findRoyal } from "./check.js";
 import { getPiecePoint as getDefinedPiecePoint } from "./pieceMetadata.js";
 
@@ -78,5 +77,3 @@ export function isRoyalInEnemyCamp(state, player) {
 export function getPiecePoint(state, pieceId) {
   return getDefinedPiecePoint(state.ruleset, pieceId);
 }
- 
- 

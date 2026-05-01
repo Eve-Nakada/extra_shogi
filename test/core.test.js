@@ -1,4 +1,3 @@
- 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -1086,4 +1085,31 @@ test("v2.5 編成ランダム配置は王を真ん中の端に固定する", () 
 
   assert.deepEqual(getSquare(state, Math.floor(state.board.width / 2), state.board.height - 1), { owner: "black", id: "K" });
   assert.equal(Object.values(state.setup.placedPieces.black).reduce((sum, count) => sum + count, 0), Object.values(state.setup.selectedPieces.black).reduce((sum, count) => sum + count, 0));
+});
+
+
+import { PRACTICAL_SHOGI } from "../src/rulesets/practicalShogi.js";
+import { TEST_LAB_SHOGI } from "../src/rulesets/testLabShogi.js";
+
+test("v2.6 実戦用ルールセットは開発用テスト駒を含まない", () => {
+  assert.equal(PRACTICAL_SHOGI.pieces.SP.usage, "practical");
+  assert.equal(PRACTICAL_SHOGI.pieces.Q, undefined);
+  assert.equal(PRACTICAL_SHOGI.pieces.D, undefined);
+  assert.equal(PRACTICAL_SHOGI.pieces.X, undefined);
+});
+
+test("v2.6 開発テスト用ルールセットはテスト駒を保持する", () => {
+  assert.equal(TEST_LAB_SHOGI.pieces.Q.usage, "test");
+  assert.equal(TEST_LAB_SHOGI.pieces.D.usage, "test");
+  assert.equal(TEST_LAB_SHOGI.pieces.X.usage, "test");
+});
+
+test("v2.6 通常編成のランダムパックには開発用テスト駒を混ぜない", () => {
+  const state = createInitialState(SETUP_SHOGI);
+  const packs = generateRandomPacks(state, "v2.6-filter-test");
+  for (const pack of packs) {
+    for (const pieceId of Object.keys(pack.pieces)) {
+      assert.notEqual(state.ruleset.pieces[pieceId]?.usage, "test");
+    }
+  }
 });

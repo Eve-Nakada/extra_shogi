@@ -1,5 +1,5 @@
 import { summarizeCaptureRules } from "../core/capture.js";
-import { getPieceAttributeLabel, getPieceCategoryLabel } from "../core/pieceMetadata.js";
+import { getPieceAttributeLabel, getPieceCategoryLabel, getPieceUsageLabel } from "../core/pieceMetadata.js";
 import { resolveDelta } from "../core/moveGenerator.js";
 
 export function renderPieceGuide(container, ruleset) {
@@ -79,7 +79,7 @@ export function createPieceCard(ruleset, pieceId, pieceDef) {
   name.textContent = `${pieceDef.name ?? pieceId}（${pieceId}）`;
   const meta = document.createElement("span");
   meta.className = "piece-guide-meta";
-  meta.textContent = `${getPieceCategoryLabel(pieceDef.category)} / ${pieceDef.point ?? "-"}点`;
+  meta.textContent = `${getPieceUsageLabel(pieceDef.usage)} / ${getPieceCategoryLabel(pieceDef.category)} / ${pieceDef.point ?? "-"}点`;
   title.append(name, meta);
   head.append(piece, title);
 

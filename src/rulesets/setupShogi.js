@@ -1,8 +1,8 @@
 import { STANDARD_SHOGI } from "./standardShogi.js";
-import { EXPANDED_SHOGI } from "./expandedShogi.js";
+import { PRACTICAL_SHOGI } from "./practicalShogi.js";
 
 export const SETUP_SHOGI = {
-  ...EXPANDED_SHOGI,
+  ...PRACTICAL_SHOGI,
   id: "setup-shogi-7x7",
   name: "編成検証将棋 7x7",
 
@@ -25,7 +25,7 @@ export const SETUP_SHOGI = {
     allowDropInPromotionZone: true
   },
 
-  handOrder: ["R", "B", "M", "F", "FG", "IW", "U", "DR", "EG", "SRM", "NIN", "RG", "SB", "XS", "DS", "SP", "Q", "D", "T", "X", "LH", "HB", "SC", "SH", "A", "C", "W", "G", "S", "N", "L", "P"],
+  handOrder: ["R", "B", "M", "FG", "IW", "DR", "EG", "SRM", "NIN", "RG", "SB", "XS", "DS", "SP", "LH", "HB", "SC", "SH", "C", "W", "G", "S", "N", "L", "P"],
 
   setup: {
     enabled: true,
@@ -33,7 +33,7 @@ export const SETUP_SHOGI = {
     flow: "simultaneous",
     budget: 18,
     requireRoyal: true,
-    allowedPieces: ["K", "R", "B", "M", "F", "FG", "IW", "U", "DR", "EG", "SRM", "NIN", "RG", "SB", "XS", "DS", "SP", "Q", "D", "T", "X", "LH", "HB", "SC", "SH", "A", "C", "W", "G", "S", "N", "L", "P"],
+    allowedPieces: ["K", "R", "B", "M", "FG", "IW", "DR", "EG", "SRM", "NIN", "RG", "SB", "XS", "DS", "SP", "LH", "HB", "SC", "SH", "C", "W", "G", "S", "N", "L", "P"],
     placementZones: {
       black: { yMin: 5, yMax: 6 },
       white: { yMin: 0, yMax: 1 }
@@ -91,8 +91,8 @@ export const SETUP_SHOGI = {
       },
       {
         id: "trick",
-        name: "特殊パック",
-        pieces: { K: 1, X: 1, U: 1, T: 1, A: 2, P: 2 }
+        name: "技巧パック",
+        pieces: { K: 1, DR: 1, NIN: 1, LH: 1, DS: 2, P: 2 }
       },
       {
         id: "new-units",
@@ -126,7 +126,6 @@ export const SETUP_SHOGI = {
         { pieceId: "EG", weight: 1 },
         { pieceId: "SRM", weight: 1 },
         { pieceId: "IW", weight: 1 },
-        { pieceId: "A", weight: 5 },
         { pieceId: "C", weight: 5 },
         { pieceId: "W", weight: 4 },
         { pieceId: "SC", weight: 5 },
@@ -140,19 +139,13 @@ export const SETUP_SHOGI = {
         { pieceId: "R", weight: 2 },
         { pieceId: "M", weight: 2 },
         { pieceId: "LH", weight: 2 },
-        { pieceId: "FG", weight: 2 },
-        { pieceId: "F", weight: 1 },
-        { pieceId: "U", weight: 1 },
-        { pieceId: "Q", weight: 1 },
-        { pieceId: "D", weight: 1 },
-        { pieceId: "T", weight: 1 },
-        { pieceId: "X", weight: 1 }
+        { pieceId: "FG", weight: 2 }
       ]
     }
   },
 
   pieces: {
-    ...EXPANDED_SHOGI.pieces,
+    ...PRACTICAL_SHOGI.pieces,
     K: {
       ...STANDARD_SHOGI.pieces.K,
       droppable: false

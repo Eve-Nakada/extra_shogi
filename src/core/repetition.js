@@ -1,4 +1,3 @@
- 
 import { applyMove } from "./applyMove.js";
 import { isInCheck } from "./check.js";
 import { createInitialState, cloneMove } from "./state.js";

@@ -1,4 +1,3 @@
- 
 import { isInCheck } from "./check.js";
 import { isCheckmate } from "./legalMoveFilter.js";
 import { opposite, playerName } from "./state.js";
@@ -101,5 +100,3 @@ function formatScoreDetail(scores) {
   const white = scores.white ?? "-";
   return `（先手${black}点 / 後手${white}点）`;
 }
- 
- 

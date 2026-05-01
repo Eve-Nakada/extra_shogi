@@ -1,4 +1,3 @@
- 
 import { STANDARD_SHOGI } from "./standardShogi.js";
 
 const KING_MOVES = STANDARD_SHOGI.pieces.K.moves;
@@ -808,5 +807,29 @@ export const EXPANDED_SHOGI = {
 
   initialPieces: createExpandedInitialPieces()
 };
- 
- 
+
+export const PRACTICAL_EXTRA_PIECE_IDS = [
+  "M", "C", "PC", "SC", "PSC", "SH", "PSH", "HB", "PHB",
+  "FG", "LH", "PLH", "SP", "PSP", "DS", "PDS", "RG", "PRG",
+  "SB", "PSB", "XS", "PXS", "EG", "SRM", "IW", "NIN", "PNIN",
+  "DR", "W", "PW"
+];
+
+export const TEST_PIECE_IDS = [
+  "F", "A", "PA", "PPA", "T", "X", "Y", "Z", "Q", "D", "U"
+];
+
+export function getExpandedPieceUsage(pieceId) {
+  if (TEST_PIECE_IDS.includes(pieceId)) return "test";
+  if (PRACTICAL_EXTRA_PIECE_IDS.includes(pieceId)) return "practical";
+  return "standard";
+}
+
+export function applyPieceUsage(ruleset) {
+  for (const [pieceId, pieceDef] of Object.entries(ruleset.pieces ?? {})) {
+    if (!pieceDef.usage) pieceDef.usage = getExpandedPieceUsage(pieceId);
+  }
+  return ruleset;
+}
+
+applyPieceUsage(EXPANDED_SHOGI);

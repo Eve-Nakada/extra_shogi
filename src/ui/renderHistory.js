@@ -1,4 +1,3 @@
- 
 import { formatHistoryEntry } from "../core/notation.js";
 
 export function renderHistory(historyElement, state, uiState) {
@@ -31,5 +30,3 @@ export function renderHistory(historyElement, state, uiState) {
     historyElement.appendChild(item);
   });
 }
- 
- 

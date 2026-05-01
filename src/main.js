@@ -1,4 +1,3 @@
- 
 import { createInitialState } from "./core/state.js";
 import { RULESETS, RULESET_BY_ID } from "./rulesets/index.js";
 import { initController } from "./ui/controller.js";
@@ -90,5 +89,3 @@ initController({
   rulesetsById: RULESET_BY_ID,
   defaultRulesetId: "standard-shogi"
 });
- 
- 

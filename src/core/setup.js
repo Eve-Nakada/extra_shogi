@@ -130,6 +130,7 @@ export function generateRandomPacks(state, seed = createSeed()) {
   const packSize = Math.max(1, Number(config.packSize ?? 6));
   const budget = Number(config.budget ?? getSetupBudget(state));
   const pool = normalizeRandomPool(state, config.pool);
+  if (pool.length === 0) throw new Error("ランダムパック候補がありません。");
   const rng = createSeededRandom(seed);
   const packs = [];
 
@@ -446,7 +447,11 @@ function normalizeRandomPool(state, pool = null) {
   const source = pool ?? getAllowedSetupPieces(state).map(pieceId => ({ pieceId, weight: 1 }));
   return source
     .map(item => typeof item === "string" ? { pieceId: item, weight: 1 } : item)
-    .filter(item => item?.pieceId && state.ruleset.pieces[item.pieceId] && Number(item.weight ?? 1) > 0);
+    .filter(item => item?.pieceId && state.ruleset.pieces[item.pieceId] && Number(item.weight ?? 1) > 0)
+    .filter(item => {
+      const usage = state.ruleset.pieces[item.pieceId]?.usage ?? "standard";
+      return state.ruleset.testOnly || usage !== "test";
+    });
 }
 
 function weightedPick(pool, rng) {

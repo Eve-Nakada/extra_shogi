@@ -1,4 +1,3 @@
- 
 export const VIEW_PREFERENCES_KEY = "shogi-html:view-preferences";
 
 export const DEFAULT_VIEW_PREFERENCES = {
@@ -38,5 +37,3 @@ export function saveViewPreferences(preferences, storage = globalThis.localStora
     // localStorage can be unavailable in private browsing or restricted contexts.
   }
 }
- 
- 

@@ -1,4 +1,3 @@
- 
 import { findRoyal, isInCheck } from "../core/check.js";
 import { getSquare } from "../core/coordinates.js";
 import { findBaseAt } from "../core/base.js";

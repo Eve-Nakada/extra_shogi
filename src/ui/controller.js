@@ -1,4 +1,3 @@
- 
 import { applyAction, getAvailableTriggeredActions, getLegalActions } from "../core/action.js";
 import { createClock, formatClockMs, getDisplayRemainingMs, pauseClock, startClock, switchClockAfterMove, updateClock } from "../core/clock.js";
 import { getSquare } from "../core/coordinates.js";
@@ -1324,5 +1323,3 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.message.textContent = message;
   }
 }
- 
- 
