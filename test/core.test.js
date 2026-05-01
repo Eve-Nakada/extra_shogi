@@ -1068,13 +1068,13 @@ test("v2.5 拠点建設後も自陣へ駒を打てる", () => {
   assert.equal(isDropAllowedByPolicy(state, "black", { x: 10, y: 0 }), false);
 });
 
-test("v2.5 小型将棋は5x5盤面で中央端に玉を配置する", () => {
+test("v2.5 小型将棋は5x5盤面と中央端の通常初期配置定義を持つ", () => {
   const state = createInitialState(SMALL_SHOGI);
 
   assert.equal(state.board.width, 5);
   assert.equal(state.board.height, 5);
-  assert.deepEqual(getSquare(state, 2, 4), { owner: "black", id: "K" });
-  assert.deepEqual(getSquare(state, 2, 0), { owner: "white", id: "K" });
+  assert.deepEqual(SMALL_SHOGI.initialPieces.find(piece => piece.owner === "black" && piece.id === "K"), { owner: "black", id: "K", x: 2, y: 4 });
+  assert.deepEqual(SMALL_SHOGI.initialPieces.find(piece => piece.owner === "white" && piece.id === "K"), { owner: "white", id: "K", x: 2, y: 0 });
 });
 
 test("v2.5 編成ランダム配置は王を真ん中の端に固定する", () => {
@@ -1112,4 +1112,15 @@ test("v2.6 通常編成のランダムパックには開発用テスト駒を混
       assert.notEqual(state.ruleset.pieces[pieceId]?.usage, "test");
     }
   }
+});
+
+
+test("v2.7 小型将棋5x5は編成とランダム配置に対応する", () => {
+  const state = createInitialState(SMALL_SHOGI);
+  assert.equal(state.phase, "setup");
+  assert.equal(SMALL_SHOGI.setup.enabled, true);
+  selectFixedPack(state, "small-balanced", "black");
+  autoPlaceSetupPieces(state, "black", "small-seed");
+  assert.deepEqual(getSquare(state, 2, 4), { owner: "black", id: "K" });
+  assert.equal(Object.values(state.setup.placedPieces.black).reduce((sum, count) => sum + count, 0), Object.values(state.setup.selectedPieces.black).reduce((sum, count) => sum + count, 0));
 });

@@ -7,7 +7,7 @@ import { parseGameRecord, restoreGameRecord, serializeGameRecord } from "../core
 import { createKifLikeGameRecord } from "../core/notation.js";
 import { completeGameMeta, normalizeGameMeta } from "../core/meta.js";
 import { replayHistory } from "../core/replay.js";
-import { isExtraActionTurnState, opposite, playerName } from "../core/state.js";
+import { cloneState, isExtraActionTurnState, opposite, playerName } from "../core/state.js";
 import { addSetupPiece, applyPlacement, autoPlaceSetupPieces, finalizeSetupPlayer, generateRandomPacks, getLegalPlacements, getSetupPlayer, isSetupActive, removeSetupPiece, removeSetupPlacementAt, selectFixedPack, selectGeneratedPack } from "../core/setup.js";
 import { undoLastMove } from "../core/undo.js";
 import { applyIncomingClock, applyIncomingMove, applyIncomingResign, applyIncomingSetup, createClockMessage, createMoveMessage, createPingMessage, createPongMessage, createResignMessage, createSetupMessage, createSyncMessage, createSyncRequestMessage } from "../net/gameSync.js";
@@ -342,14 +342,19 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
   }
 
   function inspectBoardPiece(x, y) {
+    const piece = getSquare(state, x, y);
     uiState.selected = { kind: "board", x, y };
     uiState.inspected = { kind: "board", x, y };
-    uiState.legalMoves = [];
+    const inspectionActions = getInspectionActionsForBoardPiece(x, y);
+    uiState.legalMoves = inspectionActions.filter(action => action.kind === "move");
     uiState.specialActions = [];
     uiState.displayedSpecialActions = [];
     uiState.multiMoveCompounds = [];
     uiState.multiMovePlan = null;
     uiState.targetActionPlan = null;
+    if (piece?.owner !== state.turn) {
+      setMessage(`${playerName(piece.owner)}の駒です。移動可能なマスを確認表示しています。`);
+    }
     renderAll();
   }
 
@@ -370,6 +375,22 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     uiState.multiMovePlan = null;
     uiState.targetActionPlan = null;
     renderAll();
+  }
+
+
+  function getInspectionActionsForBoardPiece(x, y) {
+    const piece = getSquare(state, x, y);
+    if (!piece) return [];
+    if (piece.owner === state.turn && canActOnCurrentTurn()) {
+      return getLegalActions(state, { kind: "board", x, y });
+    }
+
+    const inspectionState = cloneState(state);
+    inspectionState.turn = piece.owner;
+    inspectionState.status = { type: "playing", winner: null, reason: null };
+    inspectionState.phase = "playing";
+    inspectionState.turnState = null;
+    return getLegalActions(inspectionState, { kind: "board", x, y });
   }
 
   function applySelectedMove(x, y) {
@@ -406,9 +427,10 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     const promotedDef = state.ruleset.pieces[choice.promoted.promoteTo];
     const pieceLabel = beforeDef?.display ?? beforeDef?.name ?? "この駒";
     const promotedLabel = promotedDef?.display ?? promotedDef?.name ?? "成駒";
-    elements.promotionText.textContent = pieceLabel + "を" + promotedLabel + "に成りますか？";
+    const to = choice.promoted.to;
+    elements.promotionText.textContent = `${pieceLabel}を${promotedLabel}に成りますか？ 対象: ${to.x + 1},${to.y + 1}`;
     elements.promotionDialog.hidden = false;
-    elements.promotionPromoteButton.focus();
+    elements.promotionPromoteButton.focus({ preventScroll: true });
   }
 
   function confirmPromotionChoice(promote) {

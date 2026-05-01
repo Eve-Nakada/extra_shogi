@@ -37,6 +37,12 @@ export function renderBoard(boardElement, state, uiState) {
         }
         if (legalMove) {
           square.classList.add("legal");
+          if (hasPromotionMoveTo(uiState, x, y)) {
+            square.classList.add("promotion-target");
+          }
+          if (uiState.inspected?.kind === "board") {
+            square.classList.add("inspected-move");
+          }
           if (getSquare(state, x, y)) {
             square.classList.add("capture");
           }
@@ -109,7 +115,10 @@ function createPieceElement(state, piece, perspective) {
     element.classList.add("active-turn-piece");
   }
   if (pieceDef?.promoted) element.classList.add("promoted");
-  element.textContent = pieceDef?.display ?? piece.id;
+  if (pieceDef?.category) element.classList.add(`piece-`);
+  const label = pieceDef?.display ?? piece.id;
+  if (String(label).length >= 2) element.classList.add("piece-long-label");
+  element.textContent = label;
   element.title = pieceDef?.name ?? piece.id;
   return element;
 }
@@ -123,7 +132,11 @@ function isSelectedSquare(uiState, x, y) {
 }
 
 function findLegalMoveTo(uiState, x, y) {
-  return uiState.legalMoves.find(move => move.to.x === x && move.to.y === y);
+  return uiState.legalMoves.find(move => move.to?.x === x && move.to?.y === y);
+}
+
+function hasPromotionMoveTo(uiState, x, y) {
+  return (uiState.legalMoves ?? []).some(move => move.to?.x === x && move.to?.y === y && move.promoteTo);
 }
 
 function getLastMove(state) {
