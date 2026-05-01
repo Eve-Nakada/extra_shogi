@@ -218,13 +218,13 @@ textarea {
 }
 
 .square.promotion-target::before {
-  content: "成";
+  content: "⇧成";
   position: absolute;
   right: 3px;
   bottom: 3px;
   z-index: 2;
-  min-width: 18px;
-  height: 18px;
+  min-width: 24px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -235,6 +235,18 @@ textarea {
   font-size: 11px;
   font-weight: 900;
   pointer-events: none;
+  animation: promotion-rise 1s ease-in-out infinite;
+}
+
+@keyframes promotion-rise {
+  0%, 100% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 0 rgb(255 193 7 / 35%);
+  }
+  50% {
+    transform: translateY(-5px);
+    box-shadow: 0 0 0 5px rgb(255 193 7 / 0%);
+  }
 }
 
 .square.inspected-move::after {

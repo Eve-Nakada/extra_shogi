@@ -764,16 +764,30 @@ export const EXPANDED_SHOGI = {
     DR: {
       name: "鼓舞兵",
       display: "鼓",
-      description: "周囲1マスの味方を成らせる効果を持つ支援駒。昇格師より軽い支援枠。",
+      description: "周囲支援の素体となる支援駒。成ると鼓舞将になり、周囲の味方を成らせる効果を得る。",
       category: "special",
       point: 3,
       attributes: ["support"],
+      droppable: true,
+      capturedAs: "DR",
+      promotesTo: "PDR",
+      moves: CROSS_SOLDIER_MOVES
+    },
+
+    PDR: {
+      name: "鼓舞将",
+      display: "鼓+",
+      description: "鼓舞兵が成った駒。周囲1マスの味方を効果アクションで任意に成らせる。",
+      category: "promoted",
+      point: 3,
+      attributes: ["promoted", "goldLike", "support"],
+      promoted: true,
       effects: [
         { kind: "promoteNearby", timing: "ownTurn", radius: 1, target: "ownPieces", optional: true }
       ],
-      droppable: true,
+      droppable: false,
       capturedAs: "DR",
-      moves: CROSS_SOLDIER_MOVES
+      moves: GOLD_MOVES
     },
 
     W: {
@@ -812,7 +826,7 @@ export const PRACTICAL_EXTRA_PIECE_IDS = [
   "M", "C", "PC", "SC", "PSC", "SH", "PSH", "HB", "PHB",
   "FG", "LH", "PLH", "SP", "PSP", "DS", "PDS", "RG", "PRG",
   "SB", "PSB", "XS", "PXS", "EG", "SRM", "IW", "NIN", "PNIN",
-  "DR", "W", "PW"
+  "DR", "PDR", "W", "PW"
 ];
 
 export const TEST_PIECE_IDS = [

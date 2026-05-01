@@ -101,9 +101,9 @@ export function createPieceCard(ruleset, pieceId, pieceDef, options = {}) {
 
   const details = document.createElement("dl");
   details.className = "piece-guide-details";
-  appendDetail(details, "成り", pieceDef.promotesTo ? `${pieceDef.promotesTo}（${ruleset.pieces[pieceDef.promotesTo]?.name ?? "未定義"}）` : "なし");
+  appendDetail(details, "成り", pieceDef.promotesTo ? `${pieceDef.promotesTo}（${ruleset.pieces[pieceDef.promotesTo]?.name ?? "未定義"}）` : "昇格対象がありません");
   appendDetail(details, "持ち駒", pieceDef.droppable === false ? "打てない" : "打てる");
-  appendDetail(details, "取られた時", pieceDef.capturedAs ?? "持ち駒化しない");
+  appendDetail(details, "取られた時", formatCapturedAs(ruleset, pieceDef.capturedAs));
   appendDetail(details, "捕獲制限", summarizeCaptureRules(pieceDef.captureRules));
   appendDetail(details, "変身", summarizeTransformOptions(ruleset, pieceDef.transformOptions));
   appendDetail(details, "効果", summarizeEffects(pieceDef.effects));
@@ -147,6 +147,7 @@ function createPromotedPiecePanel(ruleset, promotedPieceId) {
   const details = document.createElement("dl");
   details.className = "piece-guide-details";
   appendDetail(details, "分類", `${getPieceCategoryLabel(promotedDef.category)} / ${promotedDef.point ?? "-"}点`);
+  appendDetail(details, "取られた時", formatCapturedAs(ruleset, promotedDef.capturedAs));
   appendDetail(details, "効果", summarizeEffects(promotedDef.effects));
   appendDetail(details, "特殊行動", summarizeActions(promotedDef.actions));
   appendDetail(details, "移動", summarizeMoves(promotedDef.moves));
@@ -167,12 +168,26 @@ function appendDetail(parent, term, value) {
 }
 
 function summarizeMoves(moves = []) {
+  if (!moves.length) return "移動できません";
   const counts = moves.reduce((acc, move) => {
     acc[move.kind] = (acc[move.kind] ?? 0) + 1;
     return acc;
   }, {});
-  const parts = Object.entries(counts).map(([kind, count]) => `${kind}×${count}`);
-  return parts.length ? parts.join(" / ") : "なし";
+  const labels = {
+    step: "1マス移動",
+    slide: "直線移動",
+    jump: "跳躍移動"
+  };
+  const parts = Object.entries(counts).map(([kind, count]) => `${labels[kind] ?? kind} ${count}方向`);
+  return parts.join(" / ");
+}
+
+function formatCapturedAs(ruleset, capturedAs) {
+  if (!capturedAs) return "持ち駒化しない";
+  const capturedDef = ruleset.pieces?.[capturedAs];
+  const name = capturedDef?.name ?? "未定義";
+  const display = capturedDef?.display ? `・${capturedDef.display}` : "";
+  return `${name}${display}（${capturedAs}）として持ち駒に戻る`;
 }
 
 function summarizeTransformOptions(ruleset, options = []) {

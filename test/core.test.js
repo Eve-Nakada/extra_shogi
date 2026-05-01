@@ -1124,3 +1124,23 @@ test("v2.7 小型将棋5x5は編成とランダム配置に対応する", () => 
   assert.deepEqual(getSquare(state, 2, 4), { owner: "black", id: "K" });
   assert.equal(Object.values(state.setup.placedPieces.black).reduce((sum, count) => sum + count, 0), Object.values(state.setup.selectedPieces.black).reduce((sum, count) => sum + count, 0));
 });
+
+test("v2.8 実戦用ルールセットは基本駒の成り先をすべて定義する", () => {
+  for (const [pieceId, pieceDef] of Object.entries(PRACTICAL_SHOGI.pieces)) {
+    if (!pieceDef.promotesTo) continue;
+    assert.ok(PRACTICAL_SHOGI.pieces[pieceDef.promotesTo], `${pieceId} promotes to missing ${pieceDef.promotesTo}`);
+  }
+
+  assert.equal(PRACTICAL_SHOGI.pieces.R.promotesTo, "PR");
+  assert.equal(PRACTICAL_SHOGI.pieces.PR.name, "竜王");
+  assert.equal(PRACTICAL_SHOGI.pieces.P.promotesTo, "TO");
+  assert.equal(PRACTICAL_SHOGI.pieces.TO.name, "と金");
+});
+
+test("v2.8 実戦用の鼓舞兵は成った後に昇格支援効果を得る", () => {
+  assert.equal(PRACTICAL_SHOGI.pieces.DR.promotesTo, "PDR");
+  assert.equal(PRACTICAL_SHOGI.pieces.DR.effects, undefined);
+  assert.equal(PRACTICAL_SHOGI.pieces.PDR.promoted, true);
+  assert.equal(PRACTICAL_SHOGI.pieces.PDR.effects.some(effect => effect.kind === "promoteNearby"), true);
+});
+
