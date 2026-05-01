@@ -1,9 +1,25 @@
 import { EXPANDED_SHOGI, PRACTICAL_EXTRA_PIECE_IDS, applyPieceUsage } from "./expandedShogi.js";
 
-const PRACTICAL_PIECE_IDS = [
+const PRACTICAL_BASE_PIECE_IDS = [
   ...EXPANDED_SHOGI.handOrder.filter(pieceId => EXPANDED_SHOGI.pieces[pieceId]?.usage === "standard"),
   ...PRACTICAL_EXTRA_PIECE_IDS
 ];
+
+function includePromotionChains(ids) {
+  const result = [];
+  const visit = pieceId => {
+    if (!pieceId || result.includes(pieceId)) return;
+    const pieceDef = EXPANDED_SHOGI.pieces[pieceId];
+    if (!pieceDef) return;
+    result.push(pieceId);
+    visit(pieceDef.promotesTo);
+  };
+
+  ids.forEach(visit);
+  return result;
+}
+
+const PRACTICAL_PIECE_IDS = includePromotionChains(PRACTICAL_BASE_PIECE_IDS);
 
 function pickPieces(ids) {
   return Object.fromEntries(
@@ -42,7 +58,7 @@ export const PRACTICAL_SHOGI = applyPieceUsage({
   ...EXPANDED_SHOGI,
   id: "practical-shogi-11x11",
   name: "拡張実戦将棋 11x11",
-  handOrder: EXPANDED_SHOGI.handOrder.filter(pieceId => pickPieces(PRACTICAL_PIECE_IDS)[pieceId]),
+  handOrder: EXPANDED_SHOGI.handOrder.filter(pieceId => pickPieces(PRACTICAL_BASE_PIECE_IDS)[pieceId]),
   pieces: pickPieces(PRACTICAL_PIECE_IDS),
   initialPieces: createPracticalInitialPieces()
 });

@@ -1004,7 +1004,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     if (!canActOnCurrentTurn() || displayState !== state) {
       const empty = document.createElement("p");
       empty.className = "special-action-empty";
-      empty.textContent = "特殊アクションはありません。";
+      empty.textContent = createEmptySpecialActionText(displayState);
       elements.specialActions.appendChild(empty);
       return;
     }
@@ -1015,7 +1015,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     if (actions.length === 0) {
       const empty = document.createElement("p");
       empty.className = "special-action-empty";
-      empty.textContent = "特殊アクションはありません。";
+      empty.textContent = createEmptySpecialActionText(displayState);
       elements.specialActions.appendChild(empty);
       return;
     }
@@ -1028,6 +1028,16 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
       button.textContent = createSpecialActionLabel(state, action);
       elements.specialActions.appendChild(button);
     });
+  }
+
+  function createEmptySpecialActionText(displayState) {
+    if (uiState.selected?.kind === "board") {
+      const piece = getSquare(displayState, uiState.selected.x, uiState.selected.y);
+      const pieceDef = piece ? displayState.ruleset.pieces[piece.id] : null;
+      const hasPromoteNearby = (pieceDef?.effects ?? []).some(effect => effect.kind === "promoteNearby");
+      if (hasPromoteNearby) return "昇格対象がありません。";
+    }
+    return "特殊アクションはありません。";
   }
 
   function createDisplayedSelectedActions(displayState) {
