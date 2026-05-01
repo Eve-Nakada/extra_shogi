@@ -39,3 +39,5 @@ function directionLabel(direction) {
   if (direction === "error") return "エラー";
   return "内部";
 }
+ 
+ 

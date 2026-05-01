@@ -43,3 +43,5 @@ function restoreInitialPosition(state, snapshot) {
 export function cloneHistoryEntry(entry) {
   return cloneStateHistoryEntry(entry);
 }
+ 
+ 

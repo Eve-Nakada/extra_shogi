@@ -37,3 +37,5 @@ export function saveViewPreferences(preferences, storage = globalThis.localStora
     // localStorage can be unavailable in private browsing or restricted contexts.
   }
 }
+ 
+ 

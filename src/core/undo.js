@@ -144,3 +144,5 @@ function undoBuildBaseAction(state, entry) {
 function undoAttackBaseAction(state, entry) {
   restoreBaseSnapshot(state, entry.baseBefore);
 }
+ 
+ 

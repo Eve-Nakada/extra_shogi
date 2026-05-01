@@ -348,3 +348,5 @@ export function canAcceptSignalForCurrentSession(signal, snapshot = {}) {
   if (parsed.type === "offer") return true;
   return parsed.gameId === snapshot.gameId;
 }
+ 
+ 

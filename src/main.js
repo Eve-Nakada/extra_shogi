@@ -55,6 +55,13 @@ const elements = {
   onlineGameId: document.getElementById("online-game-id"),
   signalInput: document.getElementById("signal-input"),
   signalOutput: document.getElementById("signal-output"),
+  showSignalQrButton: document.getElementById("show-signal-qr-button"),
+  signalQrOutput: document.getElementById("signal-qr-output"),
+  scanSignalQrButton: document.getElementById("scan-signal-qr-button"),
+  stopSignalQrScanButton: document.getElementById("stop-signal-qr-scan-button"),
+  signalQrVideo: document.getElementById("signal-qr-video"),
+  signalQrCanvas: document.getElementById("signal-qr-canvas"),
+  signalQrFileInput: document.getElementById("signal-qr-file-input"),
   hostOfferButton: document.getElementById("host-offer-button"),
   guestAnswerButton: document.getElementById("guest-answer-button"),
   spectatorAnswerButton: document.getElementById("spectator-answer-button"),
@@ -89,3 +96,5 @@ initController({
   rulesetsById: RULESET_BY_ID,
   defaultRulesetId: "standard-shogi"
 });
+ 
+ 

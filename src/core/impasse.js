@@ -77,3 +77,5 @@ export function isRoyalInEnemyCamp(state, player) {
 export function getPiecePoint(state, pieceId) {
   return getDefinedPiecePoint(state.ruleset, pieceId);
 }
+ 
+ 

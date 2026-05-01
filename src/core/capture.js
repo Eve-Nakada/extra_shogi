@@ -42,3 +42,5 @@ export function summarizeCaptureRules(captureRules = []) {
     return rule.kind ?? "不明な捕獲制限";
   }).join(" / ");
 }
+ 
+ 

@@ -296,3 +296,5 @@ function createMoveDiagram(pieceDef) {
   }
   return wrapper;
 }
+ 
+ 

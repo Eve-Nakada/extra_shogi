@@ -154,3 +154,5 @@ export const SETUP_SHOGI = {
 
   initialPieces: []
 };
+ 
+ 

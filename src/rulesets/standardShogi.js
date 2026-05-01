@@ -317,3 +317,5 @@ export const STANDARD_SHOGI = {
     { owner: "black", id: "L", x: 8, y: 8 }
   ]
 };
+ 
+ 

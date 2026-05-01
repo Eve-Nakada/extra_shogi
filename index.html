@@ -11,9 +11,9 @@
   <main id="app" class="app">
     <header class="app-header compact-header">
       <div>
-        <p class="version-badge">v2.8 駒説明UI・昇格表示・実戦成り調整</p>
+        <p class="version-badge">v2.9 QRコード通信補助</p>
         <h1>盤上ゲーム - 将棋HTML</h1>
-        <p class="note">駒定義メタ情報・属性・捕獲制限・変身・範囲効果・追加行動・拠点・編成/パック選択・編成通信同期・編成UI改善・追加駒・NPC対戦・拠点HP/破壊/占領・追加駒・5x5盤面・編成ランダム配置・実戦用/開発用駒分類・相手駒移動確認・成りUI改善・5x5編成・駒説明UI改善・昇格表示改善・実戦成り調整 / ローカル対局・棋譜保存・軽量通信対戦対応</p>
+        <p class="note">駒定義メタ情報・属性・捕獲制限・変身・範囲効果・追加行動・拠点・編成/パック選択・編成通信同期・編成UI改善・追加駒・NPC対戦・拠点HP/破壊/占領・追加駒・5x5盤面・編成ランダム配置・実戦用/開発用駒分類・相手駒移動確認・成りUI改善・5x5編成・駒説明UI改善・昇格表示改善・実戦成り調整・QRコード通信補助 / ローカル対局・棋譜保存・軽量通信対戦対応</p>
       </div>
       <nav class="quick-nav" aria-label="画面内ナビゲーション">
         <a href="#board">盤面</a>
@@ -210,6 +210,28 @@
         <strong>接続診断:</strong> <span id="connection-detail">未接続</span>
       </div>
 
+      <div class="qr-tools" aria-label="QRコード連携">
+        <div class="qr-tool-card">
+          <h3>出力コードQR</h3>
+          <p class="qr-tool-note">出力コードをQRコードとして表示します。読み取りにくい場合は従来通りコピーを使ってください。</p>
+          <button id="show-signal-qr-button" class="action-button" type="button">出力コードをQR表示</button>
+          <div id="signal-qr-output" class="signal-qr-output" aria-label="出力コードQR"></div>
+        </div>
+
+        <div class="qr-tool-card">
+          <h3>入力コードQR読み取り</h3>
+          <p class="qr-tool-note">カメラまたはQR画像から読み取り、入力コード欄へ反映します。接続操作は既存ボタンで確定します。</p>
+          <div class="qr-actions">
+            <button id="scan-signal-qr-button" class="action-button" type="button">カメラでQRを読み取る</button>
+            <button id="stop-signal-qr-scan-button" class="action-button" type="button" hidden>読み取り停止</button>
+            <label class="action-button file-action" for="signal-qr-file-input">QR画像を読み取る</label>
+            <input id="signal-qr-file-input" class="hidden-file" type="file" accept="image/*">
+          </div>
+          <video id="signal-qr-video" class="signal-qr-video" playsinline muted hidden></video>
+          <canvas id="signal-qr-canvas" hidden></canvas>
+        </div>
+      </div>
+
       <div class="signal-grid">
         <label class="signal-label" for="signal-input">
           入力コード
@@ -334,7 +356,7 @@
           <h3>通信対戦</h3>
           <ol>
             <li>ホストが「ホスト開始（先手）」を押して出力コードを送ります。</li>
-            <li>ゲストが入力コードに貼り、「ゲスト回答作成（後手）」を押して回答コードを返します。</li>
+            <li>ゲストが入力コードに貼るかQRで読み取り、「ゲスト回答作成（後手）」を押して回答コードを返します。</li>
             <li>ホストが回答コードを貼り、「回答読込」を押すと接続します。</li>
             <li>接続できない場合は「同期要求」「疎通確認」「再接続オファー作成」を使います。</li>
           </ol>
@@ -344,10 +366,11 @@
     </details>
 
     <footer class="app-footer">
-      <p>v2.8 / 駒説明UI・昇格表示・実戦成り調整を反映しました。</p>
+      <p>v2.9 / QRコードによる通信コード表示・読み取りを追加しました。</p>
     </footer>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>

@@ -6,3 +6,5 @@ export const TEST_LAB_SHOGI = applyPieceUsage({
   name: "開発テスト将棋 11x11",
   testOnly: true
 });
+ 
+ 

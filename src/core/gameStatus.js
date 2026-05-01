@@ -100,3 +100,5 @@ function formatScoreDetail(scores) {
   const white = scores.white ?? "-";
   return `（先手${black}点 / 後手${white}点）`;
 }
+ 
+ 

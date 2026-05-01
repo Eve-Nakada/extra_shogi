@@ -847,3 +847,5 @@ export function applyPieceUsage(ruleset) {
 }
 
 applyPieceUsage(EXPANDED_SHOGI);
+ 
+ 

@@ -348,3 +348,5 @@ function cloneHistoryEntryLike(entry) {
     turnStateAfter: cloneTurnState(entry.turnStateAfter)
   };
 }
+ 
+ 

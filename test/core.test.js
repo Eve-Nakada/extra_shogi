@@ -1144,3 +1144,5 @@ test("v2.8 実戦用の鼓舞兵は成った後に昇格支援効果を得る", 
   assert.equal(PRACTICAL_SHOGI.pieces.PDR.effects.some(effect => effect.kind === "promoteNearby"), true);
 });
 
+ 
+ 

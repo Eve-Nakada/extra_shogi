@@ -210,3 +210,5 @@ export function playerName(player) {
   if (player === "spectator") return "観戦者";
   return player === "black" ? "先手" : "後手";
 }
+ 
+ 
