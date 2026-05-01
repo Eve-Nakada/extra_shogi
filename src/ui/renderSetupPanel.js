@@ -397,3 +397,5 @@ function getCategoryText(category) {
 function escapeHtml(value) {
   return String(value).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 }
+ 
+ 

@@ -95,3 +95,5 @@ export const SMALL_SHOGI = {
   },
   initialPieces: createSmallInitialPieces()
 };
+ 
+ 

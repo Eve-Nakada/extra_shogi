@@ -237,3 +237,5 @@ function formatResult(state) {
   if (!state.status.winner) return "引き分け";
   return `${playerName(state.status.winner)}勝ち`;
 }
+ 
+ 

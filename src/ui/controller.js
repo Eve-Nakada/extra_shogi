@@ -20,6 +20,7 @@ import { renderConnectionLog } from "./renderConnectionLog.js";
 import { renderPieceGuide, renderSelectedPieceGuide } from "./renderPieceGuide.js";
 import { renderSetupPanel } from "./renderSetupPanel.js";
 import { loadViewPreferences, saveViewPreferences } from "./viewPreferences.js";
+import { initSignalQrTools } from "./qrSignal.js";
 
 const LOCAL_SAVE_KEY = "shogi-html:last-game";
 
@@ -295,6 +296,11 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.clearConnectionLogButton.addEventListener("click", () => {
       clearConnectionLog(connectionLog);
       renderAll();
+    });
+
+    initSignalQrTools(elements, {
+      setMessage,
+      addLog: (type, text, detail = null) => addLog("local", type, text, detail)
     });
   }
 
@@ -965,6 +971,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.hostAcceptAnswerButton.disabled = !(snapshot.role && (snapshot.status === "waiting-answer" || snapshot.status === "waiting-connect"));
     elements.reconnectOfferButton.disabled = !(snapshot.gameId && (snapshot.status === "disconnected" || snapshot.status === "failed"));
     elements.copySignalButton.disabled = !elements.signalOutput.value;
+    elements.showSignalQrButton.disabled = !elements.signalOutput.value;
     elements.disconnectButton.disabled = !onlineMode;
     elements.syncButton.disabled = !snapshot.connected;
     elements.syncRequestButton.disabled = !snapshot.connected;
@@ -1355,3 +1362,5 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.message.textContent = message;
   }
 }
+ 
+ 

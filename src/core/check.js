@@ -86,3 +86,5 @@ export function pieceAttacksSquare(state, piece, from, target) {
 
   return false;
 }
+ 
+ 

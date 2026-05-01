@@ -215,3 +215,5 @@ function isSetupZoneSquare(state, uiState, x, y) {
   if (zone.yMax != null && y > zone.yMax) return false;
   return true;
 }
+ 
+ 

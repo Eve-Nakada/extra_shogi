@@ -122,3 +122,5 @@ function restoreInitialPositionForTimeline(state, snapshot) {
   if (state.setup) state.setup.phase = "complete";
   state.turn = initial.turn ?? state.ruleset.firstTurn ?? state.ruleset.players[0];
 }
+ 
+ 

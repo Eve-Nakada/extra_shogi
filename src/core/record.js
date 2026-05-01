@@ -120,3 +120,5 @@ function restoreBoardSnapshot(state, board) {
   if (board.width !== state.board.width || board.height !== state.board.height) return;
   state.board.squares = board.squares.map(piece => piece ? { ...piece } : null);
 }
+ 
+ 

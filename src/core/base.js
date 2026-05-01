@@ -195,3 +195,5 @@ export function restoreBaseSnapshot(state, before) {
     state.bases.push(cloneBase(before));
   }
 }
+ 
+ 

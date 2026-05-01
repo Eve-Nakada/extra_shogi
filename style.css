@@ -2342,3 +2342,74 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* v2.9 QR code helper for manual WebRTC signaling */
+.qr-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.qr-tool-card {
+  padding: 10px;
+  border: 1px solid #d7c8aa;
+  border-radius: 8px;
+  background: #fffdf7;
+}
+
+.qr-tool-card h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.qr-tool-note {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.qr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.file-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.signal-qr-output {
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+  overflow: auto;
+}
+
+.signal-qr-output canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+.signal-qr-video {
+  width: 100%;
+  max-height: 280px;
+  margin-top: 8px;
+  border: 1px solid #d7c8aa;
+  border-radius: 8px;
+  background: #000;
+}
+
+@media (max-width: 760px) {
+  .qr-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .qr-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}

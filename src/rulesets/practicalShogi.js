@@ -62,3 +62,5 @@ export const PRACTICAL_SHOGI = applyPieceUsage({
   pieces: pickPieces(PRACTICAL_PIECE_IDS),
   initialPieces: createPracticalInitialPieces()
 });
+ 
+ 

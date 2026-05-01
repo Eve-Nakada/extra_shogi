@@ -298,3 +298,5 @@ export function isCompatibleProtocol(version) {
 function restoreSetupRecord(record, rulesetsById) {
   return restoreGameRecord(record, rulesetsById);
 }
+ 
+ 
