@@ -1,0 +1,3496 @@
+========================================== 
+FILE: action.js 
+========================================== 
+ 
+import { applyMove, applyMoveToClone } from "./applyMove.js";
+import { getSquare, inBoard } from "./coordinates.js";
+import { findBaseAt, hasBaseAt } from "./base.js";
+import { getLegalMoves, isBasicLegal, isSelectionAllowedByTurnState, leavesOwnRoyalInCheck } from "./legalMoveFilter.js";
+import { isExtraActionTurnState } from "./state.js";
+
+export function getLegalActions(state, selection, options = {}) {
+  if (state.status.type !== "playing" || state.phase === "setup") return [];
+  if (!isSelectionAllowedByTurnState(state, selection)) return [];
+
+  const actions = [
+    ...getLegalMoves(state, selection, options)
+  ];
+
+  if (selection?.kind === "board" && !isExtraActionTurnState(state.turnState)) {
+    actions.push(...getLegalTransformActions(state, selection));
+    actions.push(...getLegalBuildBaseActions(state, selection));
+    actions.push(...getLegalAttackBaseActions(state, selection));
+    actions.push(...getLegalCompoundActions(state, selection, options));
+  }
+
+  return actions;
+}
+
+export function getLegalTransformActions(state, selection) {
+  const piece = getSquare(state, selection.x, selection.y);
+  if (!piece || piece.owner !== state.turn) return [];
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  const options = pieceDef?.transformOptions ?? [];
+  const actions = [];
+
+  for (const option of options) {
+    const toPieceId = typeof option === "string" ? option : option.to;
+    const condition = typeof option === "string" ? "ownTurn" : (option.condition ?? "ownTurn");
+    if (!toPieceId || toPieceId === piece.id) continue;
+    if (!state.ruleset.pieces[toPieceId]) continue;
+    if (condition !== "ownTurn") continue;
+
+    const action = {
+      kind: "transform",
+      from: { x: selection.x, y: selection.y },
+      toPieceId
+    };
+
+    if (!leavesOwnRoyalInCheck(state, action)) {
+      actions.push(action);
+    }
+  }
+
+  return actions;
+}
+
+export function getLegalBuildBaseActions(state, selection) {
+  const piece = getSquare(state, selection.x, selection.y);
+  if (!piece || piece.owner !== state.turn) return [];
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  const buildActions = (pieceDef?.actions ?? []).filter(action => action.kind === "buildBase");
+  const actions = [];
+
+  for (const build of buildActions) {
+    const range = Math.max(1, Number(build.range ?? 1));
+    for (let y = selection.y - range; y <= selection.y + range; y += 1) {
+      for (let x = selection.x - range; x <= selection.x + range; x += 1) {
+        if (x === selection.x && y === selection.y) continue;
+        if (!inBoard(x, y, state.board)) continue;
+        if (getSquare(state, x, y) || hasBaseAt(state, x, y)) continue;
+
+        const action = {
+          kind: "buildBase",
+          actor: { x: selection.x, y: selection.y },
+          baseType: build.baseType,
+          to: { x, y }
+        };
+
+        if (isBasicLegal(state, action) && !leavesOwnRoyalInCheck(state, action)) {
+          actions.push(action);
+        }
+      }
+    }
+  }
+
+  return actions;
+}
+
+export function getLegalAttackBaseActions(state, selection) {
+  const piece = getSquare(state, selection.x, selection.y);
+  if (!piece || piece.owner !== state.turn) return [];
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  const attackDef = getPieceBaseAttackDef(pieceDef);
+  if (!attackDef) return [];
+
+  const actions = [];
+  for (const base of state.bases ?? []) {
+    if (base.owner === state.turn) continue;
+    if (!canPieceReachBase(state, piece, selection, base)) continue;
+
+    const action = {
+      kind: "attackBase",
+      actor: { x: selection.x, y: selection.y },
+      target: { x: base.x, y: base.y },
+      baseId: base.id,
+      damage: Math.max(1, Number(attackDef.damage ?? pieceDef.baseDamage ?? 1))
+    };
+
+    if (isBasicLegal(state, action) && !leavesOwnRoyalInCheck(state, action)) {
+      actions.push(action);
+    }
+  }
+
+  return actions;
+}
+
+export function getPieceBaseAttackDef(pieceDef) {
+  if (!pieceDef) return null;
+  const explicit = (pieceDef.actions ?? []).find(action => action.kind === "attackBase");
+  if (explicit) return explicit;
+  if (pieceDef.baseDamage != null || pieceDef.attributes?.includes("siege")) {
+    return { kind: "attackBase", damage: pieceDef.baseDamage ?? 1 };
+  }
+  return null;
+}
+
+export function canPieceReachBase(state, piece, from, base) {
+  const pieceDef = state.ruleset.pieces[piece.id];
+  if (!pieceDef) return false;
+
+  for (const moveDef of pieceDef.moves ?? []) {
+    const dx = moveDef.dx ?? 0;
+    const dy = Object.hasOwn(moveDef, "fy")
+      ? moveDef.fy * (piece.owner === "black" ? -1 : 1)
+      : (moveDef.dy ?? 0);
+
+    if (moveDef.kind === "step" || moveDef.kind === "jump") {
+      if (from.x + dx === base.x && from.y + dy === base.y) return true;
+      continue;
+    }
+
+    if (moveDef.kind === "slide") {
+      let x = from.x + dx;
+      let y = from.y + dy;
+      while (inBoard(x, y, state.board)) {
+        const blockingBase = findBaseAt(state, x, y);
+        if (x === base.x && y === base.y) return Boolean(blockingBase?.id === base.id);
+        if (getSquare(state, x, y) || blockingBase) break;
+        x += dx;
+        y += dy;
+      }
+    }
+  }
+
+  return false;
+}
+
+export function getLegalCompoundActions(state, selection, options = {}) {
+  const piece = getSquare(state, selection.x, selection.y);
+  if (!piece || piece.owner !== state.turn) return [];
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  const multiMove = (pieceDef?.actions ?? []).find(action => action.kind === "multiMove" && Number(action.count ?? 1) >= 2);
+  if (!multiMove) return [];
+
+  const firstMoves = getLegalMoves(state, selection, options).filter(action => action.kind === "move");
+  const compounds = [];
+
+  for (const first of firstMoves) {
+    const afterFirst = applyMoveToClone(state, first, { updateTurn: false, updateHistory: false });
+    const secondSelection = { kind: "board", x: first.to.x, y: first.to.y };
+    const secondMoves = getLegalMoves(afterFirst, secondSelection, options).filter(action => action.kind === "move");
+
+    for (const second of secondMoves) {
+      if (multiMove.allowCaptureOnSecond === false && getSquare(afterFirst, second.to.x, second.to.y)) continue;
+
+      const compound = {
+        kind: "compound",
+        actions: [first, second]
+      };
+
+      if (isBasicLegal(state, compound) && !leavesOwnRoyalInCheck(state, compound)) {
+        compounds.push(compound);
+      }
+    }
+  }
+
+  return dedupeCompoundActions(compounds);
+}
+
+export function getAvailableTriggeredActions(state, player = state.turn) {
+  if (state.status.type !== "playing" || state.phase === "setup") return [];
+  if (isExtraActionTurnState(state.turnState)) return [];
+
+  const actions = [];
+
+  for (let y = 0; y < state.board.height; y += 1) {
+    for (let x = 0; x < state.board.width; x += 1) {
+      const sourcePiece = getSquare(state, x, y);
+      if (!sourcePiece || sourcePiece.owner !== player) continue;
+
+      const sourceDef = state.ruleset.pieces[sourcePiece.id];
+      for (const effect of sourceDef?.effects ?? []) {
+        if (effect.kind === "promoteNearby") {
+          actions.push(...createPromoteNearbyActions(state, player, { x, y }, effect));
+        }
+      }
+    }
+  }
+
+  return actions.filter(action => isBasicLegal(state, action) && !leavesOwnRoyalInCheck(state, action));
+}
+
+export function applyAction(state, action, options = {}) {
+  return applyMove(state, action, options);
+}
+
+function createPromoteNearbyActions(state, player, source, effect) {
+  const radius = Math.max(1, Number(effect.radius ?? 1));
+  const targetMode = effect.target ?? "ownPieces";
+  const actions = [];
+
+  for (let y = source.y - radius; y <= source.y + radius; y += 1) {
+    for (let x = source.x - radius; x <= source.x + radius; x += 1) {
+      if (x === source.x && y === source.y) continue;
+      if (x < 0 || y < 0 || x >= state.board.width || y >= state.board.height) continue;
+
+      const targetPiece = getSquare(state, x, y);
+      if (!targetPiece) continue;
+      if (targetMode === "ownPieces" && targetPiece.owner !== player) continue;
+      if (targetMode === "enemyPieces" && targetPiece.owner === player) continue;
+
+      const targetDef = state.ruleset.pieces[targetPiece.id];
+      if (!targetDef?.promotesTo) continue;
+      if (!state.ruleset.pieces[targetDef.promotesTo]) continue;
+
+      actions.push({
+        kind: "triggerEffect",
+        effectKind: "promoteNearby",
+        source: { ...source },
+        target: { x, y },
+        promoteTo: targetDef.promotesTo
+      });
+    }
+  }
+
+  return actions;
+}
+
+function dedupeCompoundActions(actions) {
+  const seen = new Set();
+  const result = [];
+  for (const action of actions) {
+    const key = JSON.stringify(action);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(action);
+  }
+  return result;
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: applyMove.js 
+========================================== 
+ 
+import { canCapture } from "./capture.js";
+import { cloneMove, cloneState, cloneTurnState, createDefaultTurnState, isExtraActionTurnState, opposite } from "./state.js";
+import { getSquare, setSquare } from "./coordinates.js";
+import { chebyshevDistance, createBaseFromAction, damageBase, findBaseAt, getBaseDef, hasBaseAt } from "./base.js";
+
+export function applyMove(state, move, options = {}) {
+  const { updateTurn = true, updateHistory = true } = options;
+  const mover = state.turn;
+  const turnStateBefore = cloneTurnState(state.turnState);
+  let result;
+
+  if (move.kind === "move") {
+    result = applyBoardMove(state, mover, move);
+  } else if (move.kind === "drop") {
+    result = applyDropMove(state, mover, move);
+  } else if (move.kind === "transform") {
+    result = applyTransformAction(state, mover, move);
+  } else if (move.kind === "triggerEffect") {
+    result = applyTriggerEffectAction(state, mover, move);
+  } else if (move.kind === "compound") {
+    result = applyCompoundAction(state, mover, move);
+  } else if (move.kind === "buildBase") {
+    result = applyBuildBaseAction(state, mover, move);
+  } else if (move.kind === "attackBase") {
+    result = applyAttackBaseAction(state, mover, move);
+  } else {
+    throw new Error(`未知の指し手種別です: ${move.kind}`);
+  }
+
+  if (updateTurn) {
+    updateTurnStateAfterAction(state, mover, move, result, turnStateBefore);
+  }
+
+  if (updateHistory) {
+    state.history.push({
+      turn: mover,
+      move: cloneMove(move),
+      captured: result.captured ? { ...result.captured } : null,
+      pieceBefore: result.pieceBefore ? { ...result.pieceBefore } : null,
+      pieceAfter: result.pieceAfter ? { ...result.pieceAfter } : null,
+      subEntries: result.subEntries ? result.subEntries.map(cloneHistoryEntryLike) : undefined,
+      builtBase: result.builtBase ? { ...result.builtBase } : null,
+      baseBefore: result.baseBefore ? { ...result.baseBefore } : null,
+      baseAfter: result.baseAfter ? { ...result.baseAfter } : null,
+      baseOutcome: result.baseOutcome ?? null,
+      baseDamage: result.baseDamage ?? null,
+      turnStateBefore,
+      turnStateAfter: cloneTurnState(state.turnState)
+    });
+  }
+
+  return {
+    turn: mover,
+    move: cloneMove(move),
+    captured: result.captured,
+    pieceBefore: result.pieceBefore,
+    pieceAfter: result.pieceAfter,
+    subEntries: result.subEntries
+  };
+}
+
+export function applyMoveToClone(state, move, options = {}) {
+  const next = cloneState(state);
+  applyMove(next, move, options);
+  return next;
+}
+
+function applyBoardMove(state, mover, move) {
+  const piece = getSquare(state, move.from.x, move.from.y);
+  if (!piece || piece.owner !== mover) {
+    throw new Error("移動元に手番側の駒がありません。");
+  }
+
+  if (hasBaseAt(state, move.to.x, move.to.y)) {
+    throw new Error("拠点があるマスへは移動できません。");
+  }
+
+  const target = getSquare(state, move.to.x, move.to.y);
+  if (target && target.owner === mover) {
+    throw new Error("移動先に自分の駒があります。");
+  }
+
+  if (target && !canCapture(state, piece, target, {
+    attackerSquare: move.from,
+    defenderSquare: move.to
+  })) {
+    throw new Error("この駒は捕獲制限により取れません。");
+  }
+
+  if (target) {
+    addCapturedPieceToHand(state, mover, target);
+  }
+
+  const pieceAfter = {
+    owner: mover,
+    id: move.promoteTo ?? piece.id
+  };
+
+  setSquare(state, move.from.x, move.from.y, null);
+  setSquare(state, move.to.x, move.to.y, pieceAfter);
+
+  return {
+    captured: target ? { ...target } : null,
+    pieceBefore: { ...piece },
+    pieceAfter: { ...pieceAfter },
+    finalSquare: { ...move.to }
+  };
+}
+
+function applyDropMove(state, mover, move) {
+  const count = state.hands[mover][move.pieceId] ?? 0;
+  if (count <= 0) {
+    throw new Error("持ち駒が足りません。");
+  }
+
+  if (getSquare(state, move.to.x, move.to.y) || hasBaseAt(state, move.to.x, move.to.y)) {
+    throw new Error("駒打ちは空きマスにしかできません。");
+  }
+
+  state.hands[mover][move.pieceId] = count - 1;
+  if (state.hands[mover][move.pieceId] <= 0) {
+    delete state.hands[mover][move.pieceId];
+  }
+
+  const pieceAfter = {
+    owner: mover,
+    id: move.pieceId
+  };
+
+  setSquare(state, move.to.x, move.to.y, pieceAfter);
+
+  return {
+    captured: null,
+    pieceBefore: null,
+    pieceAfter,
+    finalSquare: { ...move.to }
+  };
+}
+
+function applyCompoundAction(state, mover, action) {
+  if (!Array.isArray(action.actions) || action.actions.length === 0) {
+    throw new Error("複合アクションの内容がありません。");
+  }
+
+  const subEntries = [];
+  let firstResult = null;
+  let lastResult = null;
+
+  for (const subAction of action.actions) {
+    const beforeTurnState = cloneTurnState(state.turnState);
+    const result = applyMove(state, subAction, { updateTurn: false, updateHistory: false });
+    const subEntry = {
+      turn: mover,
+      move: cloneMove(subAction),
+      captured: result.captured ? { ...result.captured } : null,
+      pieceBefore: result.pieceBefore ? { ...result.pieceBefore } : null,
+      pieceAfter: result.pieceAfter ? { ...result.pieceAfter } : null,
+      turnStateBefore: beforeTurnState,
+      turnStateAfter: cloneTurnState(state.turnState)
+    };
+    subEntries.push(subEntry);
+    if (!firstResult) firstResult = result;
+    lastResult = result;
+  }
+
+  return {
+    captured: subEntries.find(entry => entry.captured)?.captured ?? null,
+    pieceBefore: firstResult?.pieceBefore ?? null,
+    pieceAfter: lastResult?.pieceAfter ?? null,
+    subEntries,
+    builtBase: subEntries.find(entry => entry.builtBase)?.builtBase ?? null,
+    baseBefore: subEntries.find(entry => entry.baseBefore)?.baseBefore ?? null,
+    baseAfter: subEntries.find(entry => entry.baseAfter)?.baseAfter ?? null,
+    baseOutcome: subEntries.find(entry => entry.baseOutcome)?.baseOutcome ?? null,
+    baseDamage: subEntries.find(entry => entry.baseDamage)?.baseDamage ?? null,
+    finalSquare: getActionFinalSquare(action.actions.at(-1))
+  };
+}
+
+function applyBuildBaseAction(state, mover, action) {
+  const actor = getSquare(state, action.actor.x, action.actor.y);
+  if (!actor || actor.owner !== mover) {
+    throw new Error("拠点建設元に手番側の駒がありません。");
+  }
+
+  if (getSquare(state, action.to.x, action.to.y) || hasBaseAt(state, action.to.x, action.to.y)) {
+    throw new Error("拠点は空きマスにだけ建てられます。");
+  }
+
+  const actorDef = state.ruleset.pieces[actor.id];
+  const buildAction = (actorDef?.actions ?? []).find(candidate => candidate.kind === "buildBase" && candidate.baseType === action.baseType);
+  if (!buildAction || !getBaseDef(state, action.baseType)) {
+    throw new Error("この駒は指定された拠点を建設できません。");
+  }
+  const range = Math.max(1, Number(buildAction.range ?? 1));
+  if (chebyshevDistance(action.actor, action.to) > range || (action.actor.x === action.to.x && action.actor.y === action.to.y)) {
+    throw new Error("拠点建設先が範囲外です。");
+  }
+
+  const builtBase = createBaseFromAction(state, mover, action);
+  if (!Array.isArray(state.bases)) state.bases = [];
+  state.bases.push(builtBase);
+
+  return {
+    captured: null,
+    pieceBefore: { ...actor },
+    pieceAfter: { ...actor },
+    builtBase: { ...builtBase },
+    finalSquare: { ...action.to }
+  };
+}
+
+function applyAttackBaseAction(state, mover, action) {
+  const actor = getSquare(state, action.actor.x, action.actor.y);
+  if (!actor || actor.owner !== mover) throw new Error("拠点攻撃元に手番側の駒がありません。");
+
+  const base = findBaseAt(state, action.target.x, action.target.y);
+  if (!base || base.id !== action.baseId) throw new Error("攻撃対象の拠点がありません。");
+  if (base.owner === mover) throw new Error("自分の拠点は攻撃できません。");
+
+  const actorDef = state.ruleset.pieces[actor.id];
+  const attackAction = (actorDef?.actions ?? []).find(candidate => candidate.kind === "attackBase");
+  const damage = Math.max(1, Number(action.damage ?? attackAction?.damage ?? actorDef?.baseDamage ?? 1));
+  if (!attackAction && actorDef?.baseDamage == null && !actorDef?.attributes?.includes("siege")) {
+    throw new Error("この駒は拠点を攻撃できません。");
+  }
+
+  const result = damageBase(state, base.id, mover, damage);
+  return {
+    captured: null,
+    pieceBefore: { ...actor },
+    pieceAfter: { ...actor },
+    baseBefore: result.before,
+    baseAfter: result.after,
+    baseOutcome: result.outcome,
+    baseDamage: result.damage,
+    finalSquare: { ...action.target }
+  };
+}
+
+function addCapturedPieceToHand(state, owner, capturedPiece) {
+  const capturedDef = state.ruleset.pieces[capturedPiece.id];
+  const handPieceId = capturedDef?.capturedAs;
+
+  if (!handPieceId) return;
+
+  state.hands[owner][handPieceId] = (state.hands[owner][handPieceId] ?? 0) + 1;
+}
+
+function applyTransformAction(state, mover, action) {
+  const piece = getSquare(state, action.from.x, action.from.y);
+  if (!piece || piece.owner !== mover) throw new Error("変身元に手番側の駒がありません。");
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  const allowed = (pieceDef?.transformOptions ?? []).some(option => {
+    const toPieceId = typeof option === "string" ? option : option.to;
+    const condition = typeof option === "string" ? "ownTurn" : (option.condition ?? "ownTurn");
+    return toPieceId === action.toPieceId && condition === "ownTurn";
+  });
+  if (!allowed || !state.ruleset.pieces[action.toPieceId]) throw new Error("この駒は指定された駒へ変身できません。");
+
+  const pieceAfter = { owner: mover, id: action.toPieceId };
+  setSquare(state, action.from.x, action.from.y, pieceAfter);
+  return { captured: null, pieceBefore: { ...piece }, pieceAfter: { ...pieceAfter }, finalSquare: { ...action.from } };
+}
+
+function applyTriggerEffectAction(state, mover, action) {
+  if (action.effectKind !== "promoteNearby") throw new Error(`未知の誘発効果です: ${action.effectKind}`);
+
+  const sourcePiece = getSquare(state, action.source.x, action.source.y);
+  if (!sourcePiece || sourcePiece.owner !== mover) throw new Error("効果元に手番側の駒がありません。");
+
+  const sourceDef = state.ruleset.pieces[sourcePiece.id];
+  const effect = (sourceDef?.effects ?? []).find(candidate => candidate.kind === "promoteNearby");
+  if (!effect) throw new Error("この駒は周囲の駒を成らせる効果を持ちません。");
+
+  const radius = Math.max(1, Number(effect.radius ?? 1));
+  const dx = Math.abs(action.target.x - action.source.x);
+  const dy = Math.abs(action.target.y - action.source.y);
+  if ((dx === 0 && dy === 0) || dx > radius || dy > radius) throw new Error("効果対象が範囲外です。");
+
+  const targetPiece = getSquare(state, action.target.x, action.target.y);
+  if (!targetPiece) throw new Error("効果対象の駒がありません。");
+  if ((effect.target ?? "ownPieces") === "ownPieces" && targetPiece.owner !== mover) throw new Error("自分の駒だけを対象にできます。");
+
+  const targetDef = state.ruleset.pieces[targetPiece.id];
+  if (!targetDef?.promotesTo || targetDef.promotesTo !== action.promoteTo) throw new Error("この駒は効果で成れません。");
+
+  const pieceAfter = { owner: targetPiece.owner, id: action.promoteTo };
+  setSquare(state, action.target.x, action.target.y, pieceAfter);
+  return { captured: null, pieceBefore: { ...targetPiece }, pieceAfter: { ...pieceAfter }, finalSquare: { ...action.target } };
+}
+
+function updateTurnStateAfterAction(state, mover, action, result, turnStateBefore) {
+  if (isExtraActionTurnState(turnStateBefore)) {
+    state.turnState = createDefaultTurnState();
+    state.turn = opposite(state, mover);
+    return;
+  }
+
+  const extra = getExtraActionOnCaptureEffect(state, result.pieceAfter);
+  if (action.kind === "move" && result.captured && extra) {
+    state.turnState = {
+      phase: "extraAction",
+      actionIndex: 1,
+      remainingActions: Math.max(1, Number(extra.actionCount ?? 1)),
+      forcedPiece: { ...result.finalSquare },
+      reason: "extraActionOnCapture",
+      compoundActions: [cloneMove(action)]
+    };
+    return;
+  }
+
+  state.turnState = createDefaultTurnState();
+  state.turn = opposite(state, mover);
+}
+
+function getExtraActionOnCaptureEffect(state, piece) {
+  if (!piece) return null;
+  const pieceDef = state.ruleset.pieces[piece.id];
+  return (pieceDef?.effects ?? []).find(effect => effect.kind === "extraActionOnCapture" && effect.samePieceOnly !== false);
+}
+
+function getActionFinalSquare(action) {
+  if (!action) return null;
+  if (action.kind === "move" || action.kind === "drop") return { ...action.to };
+  if (action.kind === "transform") return { ...action.from };
+  if (action.kind === "triggerEffect") return { ...action.target };
+  if (action.kind === "compound") return getActionFinalSquare(action.actions.at(-1));
+  if (action.kind === "attackBase") return { ...action.target };
+  return null;
+}
+
+function cloneHistoryEntryLike(entry) {
+  return {
+    turn: entry.turn,
+    move: cloneMove(entry.move),
+    captured: entry.captured ? { ...entry.captured } : null,
+    pieceBefore: entry.pieceBefore ? { ...entry.pieceBefore } : null,
+    pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null,
+    subEntries: entry.subEntries ? entry.subEntries.map(cloneHistoryEntryLike) : undefined,
+    builtBase: entry.builtBase ? { ...entry.builtBase } : null,
+    baseBefore: entry.baseBefore ? { ...entry.baseBefore } : null,
+    baseAfter: entry.baseAfter ? { ...entry.baseAfter } : null,
+    baseOutcome: entry.baseOutcome ?? null,
+    baseDamage: entry.baseDamage ?? null,
+    turnStateBefore: cloneTurnState(entry.turnStateBefore),
+    turnStateAfter: cloneTurnState(entry.turnStateAfter)
+  };
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: base.js 
+========================================== 
+ 
+import { inBoard } from "./coordinates.js";
+
+export const DEFAULT_BASE_DEFS = {
+  castle: {
+    name: "御城",
+    display: "城",
+    hp: 3,
+    providesDropZone: true,
+    dropRadius: 1,
+    captureMode: "occupy",
+    allowedLayers: ["ground"]
+  },
+
+  carrier: {
+    name: "空母",
+    display: "母",
+    hp: 2,
+    providesDropZone: true,
+    dropRadius: 2,
+    captureMode: "destroy",
+    allowedLayers: ["ground"],
+    futureAllowedLayers: ["air"],
+    enablesLayerTransfer: false,
+    preparedForAirLayer: true
+  }
+};
+
+export function getBaseDefs(ruleset) {
+  return ruleset.baseDefs ?? ruleset.bases ?? DEFAULT_BASE_DEFS;
+}
+
+export function getBaseDef(stateOrRuleset, baseType) {
+  const ruleset = stateOrRuleset.ruleset ?? stateOrRuleset;
+  return getBaseDefs(ruleset)[baseType] ?? null;
+}
+
+export function cloneBase(base) {
+  if (!base) return null;
+  return {
+    id: base.id,
+    owner: base.owner,
+    kind: base.kind,
+    x: base.x,
+    y: base.y,
+    layer: base.layer ?? "ground",
+    hp: base.hp ?? null,
+    maxHp: base.maxHp ?? base.hp ?? null,
+    providesDropZone: base.providesDropZone !== false,
+    dropRadius: Number(base.dropRadius ?? 1),
+    captureMode: base.captureMode ?? null,
+    preparedForAirLayer: Boolean(base.preparedForAirLayer)
+  };
+}
+
+export function cloneBases(bases = []) {
+  return Array.isArray(bases) ? bases.map(cloneBase).filter(Boolean) : [];
+}
+
+export function createBaseFromAction(state, owner, action) {
+  const baseDef = getBaseDef(state, action.baseType);
+  if (!baseDef) {
+    throw new Error(`未知の拠点種別です: ${action.baseType}`);
+  }
+
+  return {
+    id: action.id ?? createBaseId(state, owner, action.baseType),
+    owner,
+    kind: action.baseType,
+    x: action.to.x,
+    y: action.to.y,
+    layer: action.to.layer ?? "ground",
+    hp: baseDef.hp ?? null,
+    maxHp: baseDef.hp ?? null,
+    providesDropZone: baseDef.providesDropZone !== false,
+    dropRadius: Number(baseDef.dropRadius ?? 1),
+    captureMode: baseDef.captureMode ?? null,
+    preparedForAirLayer: Boolean(baseDef.preparedForAirLayer)
+  };
+}
+
+export function createBaseId(state, owner, kind) {
+  const index = (state.bases?.length ?? 0) + 1;
+  return `${owner}-${kind}-${index}`;
+}
+
+export function findBaseAt(state, x, y, layer = "ground") {
+  return (state.bases ?? []).find(base => base.x === x && base.y === y && (base.layer ?? "ground") === layer) ?? null;
+}
+
+export function hasBaseAt(state, x, y, layer = "ground") {
+  return Boolean(findBaseAt(state, x, y, layer));
+}
+
+export function removeBaseById(state, id) {
+  if (!Array.isArray(state.bases)) state.bases = [];
+  const index = state.bases.findIndex(base => base.id === id);
+  if (index === -1) return false;
+  state.bases.splice(index, 1);
+  return true;
+}
+
+export function chebyshevDistance(a, b) {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
+export function isInOwnDropZone(state, player, square, options = {}) {
+  if (options.allowOwnCampAlways && isOwnCamp(state, player, square)) return true;
+
+  const baseKinds = options.baseKinds ?? null;
+  const ownBases = (state.bases ?? []).filter(base => {
+    if (base.owner !== player) return false;
+    if (base.providesDropZone === false) return false;
+    if (baseKinds && !baseKinds.includes(base.kind)) return false;
+    return true;
+  });
+
+  if (ownBases.length === 0) {
+    return Boolean(options.allowInitialCampIfNoBase && isOwnCamp(state, player, square));
+  }
+
+  return ownBases.some(base => {
+    const radius = Number(options.radius ?? base.dropRadius ?? getBaseDef(state, base.kind)?.dropRadius ?? 1);
+    return chebyshevDistance(base, square) <= radius;
+  });
+}
+
+export function isDropAllowedByPolicy(state, player, square) {
+  const drops = state.ruleset.drops ?? { enabled: true, policy: "anywhere" };
+  if (drops.enabled === false || drops.policy === "none") return false;
+  if (drops.policy === "anywhere" || !drops.policy) return true;
+  if (drops.policy === "ownCampOnly") return isOwnCamp(state, player, square);
+  if (drops.policy === "nearOwnBase") {
+    return isInOwnDropZone(state, player, square, {
+      baseKinds: drops.baseKinds ?? null,
+      radius: drops.radius,
+      allowInitialCampIfNoBase: drops.allowInitialCampIfNoBase !== false,
+      allowOwnCampAlways: drops.allowOwnCampAlways === true
+    });
+  }
+  return true;
+}
+
+export function isOwnCamp(state, player, square) {
+  if (!inBoard(square.x, square.y, state.board)) return false;
+  const depth = state.ruleset.promotion?.depth ?? 3;
+  return player === "black"
+    ? square.y >= state.board.height - depth
+    : square.y < depth;
+}
+
+export function getBaseMaxHp(state, base) {
+  const baseDef = getBaseDef(state, base.kind);
+  return Number(base.maxHp ?? baseDef?.hp ?? base.hp ?? 1);
+}
+
+export function getBaseCaptureMode(state, base) {
+  const baseDef = getBaseDef(state, base.kind);
+  return base.captureMode ?? baseDef?.captureMode ?? "destroy";
+}
+
+export function damageBase(state, baseId, attacker, damage = 1) {
+  if (!Array.isArray(state.bases)) state.bases = [];
+  const index = state.bases.findIndex(base => base.id === baseId);
+  if (index === -1) throw new Error("攻撃対象の拠点が見つかりません。");
+
+  const before = cloneBase(state.bases[index]);
+  const actualDamage = Math.max(1, Number(damage ?? 1));
+  const currentHp = Number(state.bases[index].hp ?? getBaseMaxHp(state, state.bases[index]));
+  state.bases[index].hp = currentHp - actualDamage;
+
+  let outcome = "damaged";
+  if (state.bases[index].hp <= 0) {
+    const mode = getBaseCaptureMode(state, state.bases[index]);
+    if (mode === "occupy") {
+      state.bases[index].owner = attacker;
+      state.bases[index].hp = getBaseMaxHp(state, state.bases[index]);
+      outcome = "occupied";
+    } else {
+      state.bases.splice(index, 1);
+      outcome = "destroyed";
+    }
+  }
+
+  const after = outcome === "destroyed" ? null : cloneBase(state.bases.find(base => base.id === baseId));
+  return { before, after, outcome, damage: actualDamage };
+}
+
+export function restoreBaseSnapshot(state, before) {
+  if (!Array.isArray(state.bases)) state.bases = [];
+  if (!before?.id) return;
+  const index = state.bases.findIndex(base => base.id === before.id);
+  if (index >= 0) {
+    state.bases[index] = cloneBase(before);
+  } else {
+    state.bases.push(cloneBase(before));
+  }
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: capture.js 
+========================================== 
+ 
+import { getPieceAttributes } from "./pieceMetadata.js";
+
+export function canCapture(state, attacker, defender, context = {}) {
+  if (!attacker || !defender) return false;
+  if (attacker.owner === defender.owner) return false;
+
+  const attackerDef = state.ruleset.pieces[attacker.id];
+  const defenderDef = state.ruleset.pieces[defender.id];
+  if (!attackerDef || !defenderDef) return false;
+
+  for (const rule of defenderDef.captureRules ?? []) {
+    if (!isCaptureRuleSatisfied(state, attacker, defender, rule, context)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function isCaptureRuleSatisfied(state, attacker, defender, rule, context = {}) {
+  if (!rule || typeof rule !== "object") return true;
+
+  if (rule.kind === "requiresAttackerAttribute") {
+    return hasPieceAttribute(state, attacker, rule.attribute, context.attackerSquare);
+  }
+
+  return true;
+}
+
+export function hasPieceAttribute(state, piece, attribute, square = null) {
+  if (!attribute) return false;
+  return getPieceAttributes(state.ruleset, piece?.id, { piece, square }).includes(attribute);
+}
+
+export function summarizeCaptureRules(captureRules = []) {
+  if (!captureRules.length) return "通常通り取られる";
+
+  return captureRules.map(rule => {
+    if (rule.kind === "requiresAttackerAttribute") {
+      return `攻撃側に ${rule.attribute} 属性が必要`;
+    }
+    return rule.kind ?? "不明な捕獲制限";
+  }).join(" / ");
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: check.js 
+========================================== 
+ 
+import { canCapture } from "./capture.js";
+import { fromIndex, getSquare, inBoard } from "./coordinates.js";
+import { hasBaseAt } from "./base.js";
+import { resolveDelta } from "./moveGenerator.js";
+
+export function findRoyal(state, player) {
+  for (let index = 0; index < state.board.squares.length; index += 1) {
+    const piece = state.board.squares[index];
+    if (!piece || piece.owner !== player) continue;
+
+    const pieceDef = state.ruleset.pieces[piece.id];
+    if (pieceDef?.royal) {
+      return {
+        ...fromIndex(index, state.board.width),
+        piece
+      };
+    }
+  }
+
+  return null;
+}
+
+export function isInCheck(state, player) {
+  const royal = findRoyal(state, player);
+  if (!royal) return false;
+
+  const opponents = state.ruleset.players.filter(candidate => candidate !== player);
+  return opponents.some(opponent => isSquareAttacked(state, royal.x, royal.y, opponent));
+}
+
+export function isSquareAttacked(state, x, y, byPlayer) {
+  const defender = getSquare(state, x, y);
+
+  for (let index = 0; index < state.board.squares.length; index += 1) {
+    const piece = state.board.squares[index];
+    if (!piece || piece.owner !== byPlayer) continue;
+
+    const from = fromIndex(index, state.board.width);
+    if (!pieceAttacksSquare(state, piece, from, { x, y })) continue;
+
+    if (defender && defender.owner !== byPlayer && !canCapture(state, piece, defender, {
+      attackerSquare: from,
+      defenderSquare: { x, y }
+    })) {
+      continue;
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+export function pieceAttacksSquare(state, piece, from, target) {
+  const pieceDef = state.ruleset.pieces[piece.id];
+  if (!pieceDef) return false;
+
+  for (const moveDef of pieceDef.moves) {
+    const delta = resolveDelta(moveDef, piece.owner);
+
+    if (moveDef.kind === "step" || moveDef.kind === "jump") {
+      if (from.x + delta.dx === target.x && from.y + delta.dy === target.y) {
+        return true;
+      }
+      continue;
+    }
+
+    if (moveDef.kind === "slide") {
+      let x = from.x + delta.dx;
+      let y = from.y + delta.dy;
+
+      while (inBoard(x, y, state.board)) {
+        if (x === target.x && y === target.y) {
+          return true;
+        }
+
+        if (getSquare(state, x, y) || hasBaseAt(state, x, y)) {
+          break;
+        }
+
+        x += delta.dx;
+        y += delta.dy;
+      }
+    }
+  }
+
+  return false;
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: clock.js 
+========================================== 
+ 
+import { opposite } from "./state.js";
+
+export const DEFAULT_CLOCK_CONFIG = {
+  enabled: false,
+  initialMs: 10 * 60 * 1000,
+  incrementMs: 0
+};
+
+export function createClock(config = DEFAULT_CLOCK_CONFIG, players = ["black", "white"]) {
+  const normalized = normalizeClockConfig(config);
+  return {
+    config: normalized,
+    remainingMs: Object.fromEntries(players.map(player => [player, normalized.initialMs])),
+    running: false,
+    activePlayer: null,
+    lastStartedAt: null,
+    flagFallPlayer: null
+  };
+}
+
+export function normalizeClockConfig(config = {}) {
+  return {
+    enabled: Boolean(config.enabled),
+    initialMs: Math.max(0, Number(config.initialMs ?? DEFAULT_CLOCK_CONFIG.initialMs)),
+    incrementMs: Math.max(0, Number(config.incrementMs ?? DEFAULT_CLOCK_CONFIG.incrementMs))
+  };
+}
+
+export function cloneClock(clock) {
+  if (!clock) return null;
+  return {
+    config: { ...clock.config },
+    remainingMs: { ...clock.remainingMs },
+    running: Boolean(clock.running),
+    activePlayer: clock.activePlayer ?? null,
+    lastStartedAt: clock.lastStartedAt ?? null,
+    flagFallPlayer: clock.flagFallPlayer ?? null
+  };
+}
+
+export function startClock(clock, player, now = Date.now()) {
+  if (!clock?.config?.enabled || clock.flagFallPlayer) return clock;
+  clock.running = true;
+  clock.activePlayer = player;
+  clock.lastStartedAt = now;
+  return clock;
+}
+
+export function pauseClock(clock, now = Date.now()) {
+  if (!clock?.running) return clock;
+  commitElapsed(clock, now);
+  clock.running = false;
+  clock.lastStartedAt = null;
+  return clock;
+}
+
+export function switchClockAfterMove(clock, mover, ruleset, now = Date.now()) {
+  if (!clock?.config?.enabled || clock.flagFallPlayer) return clock;
+
+  if (clock.running && clock.activePlayer === mover) {
+    commitElapsed(clock, now);
+  }
+
+  if (!clock.flagFallPlayer) {
+    clock.remainingMs[mover] = Math.max(0, (clock.remainingMs[mover] ?? 0) + clock.config.incrementMs);
+    clock.activePlayer = opposite(ruleset, mover);
+    clock.running = true;
+    clock.lastStartedAt = now;
+  }
+
+  return clock;
+}
+
+export function updateClock(clock, now = Date.now()) {
+  if (!clock?.config?.enabled || !clock.running || !clock.activePlayer || clock.flagFallPlayer) {
+    return clock;
+  }
+
+  const elapsed = Math.max(0, now - (clock.lastStartedAt ?? now));
+  const base = clock.remainingMs[clock.activePlayer] ?? 0;
+  if (base - elapsed <= 0) {
+    clock.remainingMs[clock.activePlayer] = 0;
+    clock.flagFallPlayer = clock.activePlayer;
+    clock.running = false;
+    clock.lastStartedAt = null;
+  }
+
+  return clock;
+}
+
+export function getDisplayRemainingMs(clock, player, now = Date.now()) {
+  if (!clock?.config?.enabled) return null;
+
+  let remaining = clock.remainingMs[player] ?? 0;
+  if (clock.running && clock.activePlayer === player && !clock.flagFallPlayer) {
+    remaining -= Math.max(0, now - (clock.lastStartedAt ?? now));
+  }
+
+  return Math.max(0, remaining);
+}
+
+export function formatClockMs(ms) {
+  const totalSeconds = Math.ceil(Math.max(0, ms) / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function commitElapsed(clock, now) {
+  const player = clock.activePlayer;
+  if (!player) return;
+
+  const elapsed = Math.max(0, now - (clock.lastStartedAt ?? now));
+  const next = Math.max(0, (clock.remainingMs[player] ?? 0) - elapsed);
+  clock.remainingMs[player] = next;
+  if (next <= 0) {
+    clock.flagFallPlayer = player;
+  }
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: coordinates.js 
+========================================== 
+ 
+export function toIndex(x, y, width) {
+  return y * width + x;
+}
+
+export function fromIndex(index, width) {
+  return {
+    x: index % width,
+    y: Math.floor(index / width)
+  };
+}
+
+export function inBoard(x, y, board) {
+  return (
+    Number.isInteger(x) &&
+    Number.isInteger(y) &&
+    x >= 0 &&
+    y >= 0 &&
+    x < board.width &&
+    y < board.height
+  );
+}
+
+export function getSquare(state, x, y) {
+  if (!inBoard(x, y, state.board)) return null;
+  return state.board.squares[toIndex(x, y, state.board.width)];
+}
+
+export function setSquare(state, x, y, piece) {
+  if (!inBoard(x, y, state.board)) {
+    throw new Error(`盤外の座標です: (${x}, ${y})`);
+  }
+  state.board.squares[toIndex(x, y, state.board.width)] = piece;
+}
+
+export function sameSquare(a, b) {
+  return Boolean(a && b && a.x === b.x && a.y === b.y);
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: gameStatus.js 
+========================================== 
+ 
+import { isInCheck } from "./check.js";
+import { isCheckmate } from "./legalMoveFilter.js";
+import { opposite, playerName } from "./state.js";
+import { detectRepetition } from "./repetition.js";
+import { evaluateImpasse } from "./impasse.js";
+
+export function updateGameStatus(state) {
+  if (state.status.type !== "playing" || state.phase === "setup") return state.status;
+
+  const playerToMove = state.turn;
+  if (isCheckmate(state, playerToMove)) {
+    state.status = {
+      type: "ended",
+      winner: opposite(state, playerToMove),
+      reason: "checkmate"
+    };
+    return state.status;
+  }
+
+  const repetition = detectRepetition(state);
+  if (repetition.repeated) {
+    state.status = {
+      type: "ended",
+      winner: repetition.winner,
+      reason: repetition.type,
+      detail: repetition
+    };
+  }
+
+  return state.status;
+}
+
+export function resign(state, player = state.turn) {
+  if (state.status.type !== "playing") return state.status;
+
+  state.status = {
+    type: "ended",
+    winner: opposite(state, player),
+    reason: "resign"
+  };
+
+  return state.status;
+}
+
+export function declareImpasse(state) {
+  if (state.status.type !== "playing") return state.status;
+
+  const result = evaluateImpasse(state);
+  if (!result.ready) {
+    return {
+      type: "rejected",
+      winner: null,
+      reason: "impasse_not_ready",
+      detail: result
+    };
+  }
+
+  state.status = {
+    type: "ended",
+    winner: result.winner,
+    reason: "impasse",
+    detail: result
+  };
+
+  return state.status;
+}
+
+export function createStatusText(state) {
+  if (state.status.type === "ended") {
+    return createEndedStatusText(state.status);
+  }
+
+  const turnName = playerName(state.turn);
+  const checkSuffix = isInCheck(state, state.turn) ? "（王手）" : "";
+  return `手番：${turnName}${checkSuffix}`;
+}
+
+export function createEndedStatusText(status) {
+  if (status.reason === "sennichite") return "千日手：引き分け";
+  if (status.reason === "perpetual_check") return `連続王手の千日手：${playerName(status.winner)}の勝ち`;
+  if (status.reason === "impasse") {
+    const scoreText = formatScoreDetail(status.detail?.scores);
+    if (!status.winner) return `持将棋：引き分け${scoreText}`;
+    return `持将棋：${playerName(status.winner)}の勝ち${scoreText}`;
+  }
+  if (status.reason === "time") return `時間切れ：${playerName(status.winner)}の勝ち`;
+
+  const winner = playerName(status.winner);
+  const reason = status.reason === "checkmate" ? "詰み" : "投了";
+  return `${reason}：${winner}の勝ち`;
+}
+
+export function isCurrentTurnInCheck(state) {
+  return state.status.type === "playing" && isInCheck(state, state.turn);
+}
+
+function formatScoreDetail(scores) {
+  if (!scores) return "";
+  const black = scores.black ?? "-";
+  const white = scores.white ?? "-";
+  return `（先手${black}点 / 後手${white}点）`;
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: impasse.js 
+========================================== 
+ 
+import { findRoyal } from "./check.js";
+import { getPiecePoint as getDefinedPiecePoint } from "./pieceMetadata.js";
+
+export const IMPASSE_POINT_THRESHOLD = 24;
+
+export function calculateImpasseScore(state, player) {
+  let total = 0;
+
+  for (const piece of state.board.squares) {
+    if (!piece || piece.owner !== player) continue;
+    total += getPiecePoint(state, piece.id);
+  }
+
+  for (const [pieceId, count] of Object.entries(state.hands[player] ?? {})) {
+    total += getPiecePoint(state, pieceId) * count;
+  }
+
+  return total;
+}
+
+export function evaluateImpasse(state) {
+  const players = state.ruleset.players;
+  const scores = Object.fromEntries(players.map(player => [player, calculateImpasseScore(state, player)]));
+  const kingsEntered = Object.fromEntries(players.map(player => [player, isRoyalInEnemyCamp(state, player)]));
+  const ready = players.every(player => kingsEntered[player]);
+
+  if (!ready) {
+    return {
+      ready: false,
+      scores,
+      kingsEntered,
+      winner: null,
+      reason: "king_not_entered"
+    };
+  }
+
+  const below = players.filter(player => scores[player] < IMPASSE_POINT_THRESHOLD);
+  if (below.length === 0) {
+    return {
+      ready: true,
+      scores,
+      kingsEntered,
+      winner: null,
+      reason: "draw_by_points"
+    };
+  }
+
+  if (below.length === 1) {
+    const winner = players.find(player => player !== below[0]) ?? null;
+    return {
+      ready: true,
+      scores,
+      kingsEntered,
+      winner,
+      reason: "point_shortage"
+    };
+  }
+
+  return {
+    ready: true,
+    scores,
+    kingsEntered,
+    winner: null,
+    reason: "both_point_shortage"
+  };
+}
+
+export function isRoyalInEnemyCamp(state, player) {
+  const royal = findRoyal(state, player);
+  if (!royal) return false;
+
+  const depth = state.ruleset.promotion?.depth ?? 3;
+  if (player === "black") return royal.y < depth;
+  return royal.y >= state.board.height - depth;
+}
+
+export function getPiecePoint(state, pieceId) {
+  return getDefinedPiecePoint(state.ruleset, pieceId);
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: legalMoveFilter.js 
+========================================== 
+ 
+import { canCapture } from "./capture.js";
+import { isExtraActionTurnState } from "./state.js";
+ 
+import { applyMoveToClone } from "./applyMove.js";
+import { fromIndex, getSquare, inBoard } from "./coordinates.js";
+import { chebyshevDistance, findBaseAt, getBaseDef, hasBaseAt, isDropAllowedByPolicy } from "./base.js";
+import { isInCheck } from "./check.js";
+import { canPieceReachBase, getPieceBaseAttackDef } from "./action.js";
+import {
+  canPromote,
+  generatePseudoMoves,
+  isLastRank,
+  isLastTwoRanks,
+  mustPromote
+} from "./moveGenerator.js";
+
+export function getLegalMoves(state, selection, options = {}) {
+  if (state.status.type !== "playing" || state.phase === "setup") return [];
+  if (!isSelectionAllowedByTurnState(state, selection)) return [];
+
+  const pseudoMoves = generatePseudoMoves(state, selection);
+
+  return pseudoMoves.filter(move => {
+    if (!isBasicLegal(state, move)) return false;
+    if (leavesOwnRoyalInCheck(state, move)) return false;
+    if (shouldValidatePawnDropMate(options) && isIllegalPawnDropMate(state, move)) return false;
+    return true;
+  });
+}
+
+export function getAllLegalMovesForPlayer(state, player, options = {}) {
+  const view = { ...state, turn: player };
+  const moves = [];
+
+  for (let index = 0; index < view.board.squares.length; index += 1) {
+    const piece = view.board.squares[index];
+    if (!piece || piece.owner !== player) continue;
+
+    const { x, y } = fromIndex(index, view.board.width);
+    moves.push(...getLegalMoves(view, { kind: "board", x, y }, options));
+  }
+
+  for (const [pieceId, count] of Object.entries(view.hands[player] ?? {})) {
+    if (count <= 0) continue;
+    moves.push(...getLegalMoves(view, { kind: "hand", owner: player, pieceId }, options));
+  }
+
+  return moves;
+}
+
+export function isCheckmate(state, player, options = {}) {
+  if (!isInCheck(state, player)) return false;
+  return getAllLegalMovesForPlayer(state, player, options).length === 0;
+}
+
+export function isBasicLegal(state, move) {
+  if (move.kind === "move") {
+    return isBasicBoardMoveLegal(state, move);
+  }
+
+  if (move.kind === "drop") {
+    return isBasicDropLegal(state, move);
+  }
+
+  if (move.kind === "transform") {
+    return isBasicTransformLegal(state, move);
+  }
+
+  if (move.kind === "triggerEffect") {
+    return isBasicTriggerEffectLegal(state, move);
+  }
+
+  if (move.kind === "compound") {
+    return isBasicCompoundLegal(state, move);
+  }
+
+  if (move.kind === "buildBase") {
+    return isBasicBuildBaseLegal(state, move);
+  }
+
+  if (move.kind === "attackBase") {
+    return isBasicAttackBaseLegal(state, move);
+  }
+
+  return false;
+}
+
+export function leavesOwnRoyalInCheck(state, move) {
+  const mover = state.turn;
+  const next = applyMoveToClone(state, move, {
+    updateTurn: false,
+    updateHistory: false
+  });
+
+  return isInCheck(next, mover);
+}
+
+export function isIllegalPawnDropMate(state, move) {
+  if (move.kind !== "drop") return false;
+
+  const pieceDef = state.ruleset.pieces[move.pieceId];
+  if (!pieceDef?.dropRules?.includes("noDropPawnMate")) return false;
+
+  const next = applyMoveToClone(state, move, {
+    updateTurn: true,
+    updateHistory: false
+  });
+  const defender = next.turn;
+
+  if (!isInCheck(next, defender)) return false;
+
+  // 再帰爆発を避けるため、この詰み確認の内部では打ち歩詰め規則を再評価しない。
+  return isCheckmate(next, defender, { validatePawnDropMate: false });
+}
+
+function isBasicBoardMoveLegal(state, move) {
+  if (!inBoard(move.from.x, move.from.y, state.board)) return false;
+  if (!inBoard(move.to.x, move.to.y, state.board)) return false;
+
+  const piece = getSquare(state, move.from.x, move.from.y);
+  if (!piece || piece.owner !== state.turn) return false;
+
+  if (hasBaseAt(state, move.to.x, move.to.y)) return false;
+
+  const target = getSquare(state, move.to.x, move.to.y);
+  if (target?.owner === state.turn) return false;
+  if (target && !canCapture(state, piece, target, {
+    attackerSquare: move.from,
+    defenderSquare: move.to
+  })) return false;
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  if (!pieceDef) return false;
+
+  if (move.promoteTo) {
+    if (move.promoteTo !== pieceDef.promotesTo) return false;
+    if (!canPromote(state, piece, move.from, move.to)) return false;
+  } else if (mustPromote(state, piece, move.to)) {
+    return false;
+  }
+
+  return true;
+}
+
+function isBasicDropLegal(state, move) {
+  if (!inBoard(move.to.x, move.to.y, state.board)) return false;
+  if (getSquare(state, move.to.x, move.to.y) || hasBaseAt(state, move.to.x, move.to.y)) return false;
+  if ((state.hands[state.turn][move.pieceId] ?? 0) <= 0) return false;
+
+  if (!isDropAllowedByPolicy(state, state.turn, move.to)) return false;
+
+  const pieceDef = state.ruleset.pieces[move.pieceId];
+  if (!pieceDef || pieceDef.droppable === false) return false;
+
+  for (const rule of pieceDef.dropRules ?? []) {
+    if (rule === "notLastRank" && isLastRank(state, state.turn, move.to.y)) {
+      return false;
+    }
+
+    if (rule === "notLastTwoRanks" && isLastTwoRanks(state, state.turn, move.to.y)) {
+      return false;
+    }
+
+    if (rule === "noSameFilePawn" && hasUnpromotedPawnOnFile(state, state.turn, move.to.x, move.pieceId)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function hasUnpromotedPawnOnFile(state, owner, x, pieceId) {
+  for (let y = 0; y < state.board.height; y += 1) {
+    const piece = getSquare(state, x, y);
+    if (piece?.owner === owner && piece.id === pieceId) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function shouldValidatePawnDropMate(options) {
+  return options.validatePawnDropMate !== false;
+}
+ 
+ 
+
+function isBasicTransformLegal(state, action) {
+  if (!inBoard(action.from.x, action.from.y, state.board)) return false;
+  const piece = getSquare(state, action.from.x, action.from.y);
+  if (!piece || piece.owner !== state.turn) return false;
+  if (!state.ruleset.pieces[action.toPieceId]) return false;
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  return (pieceDef?.transformOptions ?? []).some(option => {
+    const toPieceId = typeof option === "string" ? option : option.to;
+    const condition = typeof option === "string" ? "ownTurn" : (option.condition ?? "ownTurn");
+    return toPieceId === action.toPieceId && condition === "ownTurn";
+  });
+}
+
+function isBasicTriggerEffectLegal(state, action) {
+  if (action.effectKind !== "promoteNearby") return false;
+  if (!inBoard(action.source.x, action.source.y, state.board)) return false;
+  if (!inBoard(action.target.x, action.target.y, state.board)) return false;
+
+  const sourcePiece = getSquare(state, action.source.x, action.source.y);
+  const targetPiece = getSquare(state, action.target.x, action.target.y);
+  if (!sourcePiece || sourcePiece.owner !== state.turn || !targetPiece) return false;
+
+  const sourceDef = state.ruleset.pieces[sourcePiece.id];
+  const effect = (sourceDef?.effects ?? []).find(candidate => candidate.kind === "promoteNearby");
+  if (!effect) return false;
+
+  const radius = Math.max(1, Number(effect.radius ?? 1));
+  const dx = Math.abs(action.target.x - action.source.x);
+  const dy = Math.abs(action.target.y - action.source.y);
+  if ((dx === 0 && dy === 0) || dx > radius || dy > radius) return false;
+  if ((effect.target ?? "ownPieces") === "ownPieces" && targetPiece.owner !== state.turn) return false;
+
+  const targetDef = state.ruleset.pieces[targetPiece.id];
+  return Boolean(targetDef?.promotesTo && targetDef.promotesTo === action.promoteTo && state.ruleset.pieces[action.promoteTo]);
+}
+
+function isBasicBuildBaseLegal(state, action) {
+  if (!inBoard(action.actor.x, action.actor.y, state.board)) return false;
+  if (!inBoard(action.to.x, action.to.y, state.board)) return false;
+
+  const actor = getSquare(state, action.actor.x, action.actor.y);
+  if (!actor || actor.owner !== state.turn) return false;
+  if (getSquare(state, action.to.x, action.to.y) || hasBaseAt(state, action.to.x, action.to.y)) return false;
+
+  const actorDef = state.ruleset.pieces[actor.id];
+  const buildAction = (actorDef?.actions ?? []).find(candidate => {
+    return candidate.kind === "buildBase" && candidate.baseType === action.baseType;
+  });
+  if (!buildAction) return false;
+  if (!getBaseDef(state, action.baseType)) return false;
+
+  const range = Math.max(1, Number(buildAction.range ?? 1));
+  if (chebyshevDistance(action.actor, action.to) > range) return false;
+  if (action.actor.x === action.to.x && action.actor.y === action.to.y) return false;
+
+  return true;
+}
+
+export function isSelectionAllowedByTurnState(state, selection) {
+  if (!isExtraActionTurnState(state.turnState)) return true;
+  if (selection?.kind !== "board") return false;
+  return selection.x === state.turnState.forcedPiece.x && selection.y === state.turnState.forcedPiece.y;
+}
+
+function isBasicAttackBaseLegal(state, action) {
+  if (!inBoard(action.actor.x, action.actor.y, state.board)) return false;
+  if (!inBoard(action.target.x, action.target.y, state.board)) return false;
+
+  const actor = getSquare(state, action.actor.x, action.actor.y);
+  if (!actor || actor.owner !== state.turn) return false;
+
+  const base = findBaseAt(state, action.target.x, action.target.y);
+  if (!base || base.owner === state.turn) return false;
+  if (action.baseId && base.id !== action.baseId) return false;
+
+  const actorDef = state.ruleset.pieces[actor.id];
+  if (!getPieceBaseAttackDef(actorDef)) return false;
+
+  return canPieceReachBase(state, actor, action.actor, base);
+}
+
+function isBasicCompoundLegal(state, action) {
+  if (!Array.isArray(action.actions) || action.actions.length < 2) return false;
+  if (isExtraActionTurnState(state.turnState)) return false;
+
+  let view = state;
+  for (const subAction of action.actions) {
+    if (subAction.kind !== "move") return false;
+    if (!isBasicBoardMoveLegal(view, subAction)) return false;
+    view = applyMoveToClone(view, subAction, { updateTurn: false, updateHistory: false });
+  }
+
+  return true;
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: meta.js 
+========================================== 
+ 
+export function createDefaultMeta(now = new Date()) {
+  const iso = now instanceof Date ? now.toISOString() : String(now);
+  return {
+    title: "",
+    blackName: "先手",
+    whiteName: "後手",
+    eventName: "",
+    location: "",
+    startedAt: iso,
+    endedAt: null,
+    notes: ""
+  };
+}
+
+export function normalizeGameMeta(meta = {}, now = new Date()) {
+  const defaults = createDefaultMeta(now);
+  return {
+    title: normalizeText(meta.title, defaults.title),
+    blackName: normalizeText(meta.blackName, defaults.blackName),
+    whiteName: normalizeText(meta.whiteName, defaults.whiteName),
+    eventName: normalizeText(meta.eventName, defaults.eventName),
+    location: normalizeText(meta.location, defaults.location),
+    startedAt: normalizeText(meta.startedAt, defaults.startedAt),
+    endedAt: meta.endedAt ? String(meta.endedAt) : null,
+    notes: normalizeText(meta.notes, defaults.notes)
+  };
+}
+
+export function cloneGameMeta(meta) {
+  return normalizeGameMeta(meta ?? createDefaultMeta());
+}
+
+export function completeGameMeta(meta, endedAt = new Date()) {
+  const normalized = normalizeGameMeta(meta);
+  if (!normalized.endedAt) {
+    normalized.endedAt = endedAt instanceof Date ? endedAt.toISOString() : String(endedAt);
+  }
+  return normalized;
+}
+
+export function playerDisplayNameFromMeta(meta, player) {
+  const normalized = normalizeGameMeta(meta);
+  if (player === "black") return normalized.blackName || "先手";
+  if (player === "white") return normalized.whiteName || "後手";
+  return "観戦者";
+}
+
+function normalizeText(value, fallback) {
+  if (value == null) return fallback;
+  return String(value).trim();
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: moveGenerator.js 
+========================================== 
+ 
+import { canCapture } from "./capture.js";
+import { getSquare, inBoard } from "./coordinates.js";
+import { hasBaseAt } from "./base.js";
+
+export function generatePseudoMoves(state, selection) {
+  if (state.status.type !== "playing") return [];
+
+  if (selection.kind === "board") {
+    return generateBoardPseudoMoves(state, selection.x, selection.y);
+  }
+
+  if (selection.kind === "hand") {
+    return generateDropPseudoMoves(state, selection);
+  }
+
+  return [];
+}
+
+export function generateBoardPseudoMoves(state, x, y) {
+  const piece = getSquare(state, x, y);
+  if (!piece || piece.owner !== state.turn) return [];
+
+  const pieceDef = state.ruleset.pieces[piece.id];
+  if (!pieceDef) return [];
+
+  const moves = [];
+
+  for (const moveDef of pieceDef.moves) {
+    const delta = resolveDelta(moveDef, piece.owner);
+
+    if (moveDef.kind === "slide") {
+      let toX = x + delta.dx;
+      let toY = y + delta.dy;
+
+      while (inBoard(toX, toY, state.board)) {
+        if (hasBaseAt(state, toX, toY)) break;
+        const target = getSquare(state, toX, toY);
+        if (target?.owner === piece.owner) break;
+
+        if (!target || canCapture(state, piece, target, {
+          attackerSquare: { x, y },
+          defenderSquare: { x: toX, y: toY }
+        })) {
+          moves.push(...expandPromotionChoices(state, piece, { x, y }, { x: toX, y: toY }));
+        }
+
+        if (target) break;
+        toX += delta.dx;
+        toY += delta.dy;
+      }
+
+      continue;
+    }
+
+    if (moveDef.kind === "step" || moveDef.kind === "jump") {
+      const toX = x + delta.dx;
+      const toY = y + delta.dy;
+      if (!inBoard(toX, toY, state.board)) continue;
+
+      if (hasBaseAt(state, toX, toY)) continue;
+      const target = getSquare(state, toX, toY);
+      if (target?.owner === piece.owner) continue;
+      if (target && !canCapture(state, piece, target, {
+        attackerSquare: { x, y },
+        defenderSquare: { x: toX, y: toY }
+      })) continue;
+
+      moves.push(...expandPromotionChoices(state, piece, { x, y }, { x: toX, y: toY }));
+    }
+  }
+
+  return moves;
+}
+
+export function generateDropPseudoMoves(state, selection) {
+  if (selection.owner !== state.turn) return [];
+  if ((state.hands[selection.owner][selection.pieceId] ?? 0) <= 0) return [];
+
+  const pieceDef = state.ruleset.pieces[selection.pieceId];
+  if (!pieceDef || pieceDef.droppable === false) return [];
+
+  const moves = [];
+  for (let y = 0; y < state.board.height; y += 1) {
+    for (let x = 0; x < state.board.width; x += 1) {
+      if (!getSquare(state, x, y) && !hasBaseAt(state, x, y)) {
+        moves.push({
+          kind: "drop",
+          pieceId: selection.pieceId,
+          to: { x, y }
+        });
+      }
+    }
+  }
+
+  return moves;
+}
+
+export function expandPromotionChoices(state, piece, from, to) {
+  const pieceDef = state.ruleset.pieces[piece.id];
+  const base = {
+    kind: "move",
+    from: { ...from },
+    to: { ...to },
+    promoteTo: null
+  };
+
+  if (!pieceDef?.promotesTo) {
+    return [base];
+  }
+
+  if (!canPromote(state, piece, from, to)) {
+    return [base];
+  }
+
+  if (mustPromote(state, piece, to)) {
+    return [{ ...base, promoteTo: pieceDef.promotesTo }];
+  }
+
+  return [
+    base,
+    { ...base, promoteTo: pieceDef.promotesTo }
+  ];
+}
+
+export function canPromote(state, piece, from, to) {
+  const pieceDef = state.ruleset.pieces[piece.id];
+  if (!pieceDef?.promotesTo) return false;
+
+  return (
+    isPromotionZone(state, piece.owner, from.y) ||
+    isPromotionZone(state, piece.owner, to.y)
+  );
+}
+
+export function mustPromote(state, piece, to) {
+  const pieceDef = state.ruleset.pieces[piece.id];
+  if (!pieceDef?.mustPromote) return false;
+
+  if (pieceDef.mustPromote === "lastRank") {
+    return isLastRank(state, piece.owner, to.y);
+  }
+
+  if (pieceDef.mustPromote === "lastTwoRanks") {
+    return isLastTwoRanks(state, piece.owner, to.y);
+  }
+
+  return false;
+}
+
+export function isPromotionZone(state, owner, y) {
+  const depth = state.ruleset.promotion?.depth ?? 0;
+  if (depth <= 0) return false;
+
+  if (owner === "black") {
+    return y < depth;
+  }
+
+  return y >= state.board.height - depth;
+}
+
+export function isLastRank(state, owner, y) {
+  return owner === "black" ? y === 0 : y === state.board.height - 1;
+}
+
+export function isLastTwoRanks(state, owner, y) {
+  return owner === "black" ? y <= 1 : y >= state.board.height - 2;
+}
+
+export function forwardOf(owner) {
+  return owner === "black" ? -1 : 1;
+}
+
+export function resolveDelta(moveDef, owner) {
+  const dx = moveDef.dx ?? 0;
+  const dy = Object.hasOwn(moveDef, "fy")
+    ? moveDef.fy * forwardOf(owner)
+    : (moveDef.dy ?? 0);
+
+  return { dx, dy };
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: notation.js 
+========================================== 
+ 
+import { playerName } from "./state.js";
+import { normalizeGameMeta, playerDisplayNameFromMeta } from "./meta.js";
+
+export function formatHistoryEntry(entry, ruleset, index = null) {
+  const prefix = index == null ? "" : `${index + 1}. `;
+  const turn = playerName(entry.turn);
+
+  if (entry.move.kind === "drop") {
+    const pieceDef = ruleset.pieces[entry.move.pieceId];
+    return `${prefix}${turn} ${pieceDef?.display ?? entry.move.pieceId}打 ${formatSquare(entry.move.to)}`;
+  }
+
+  if (entry.move.kind === "move") {
+    const pieceId = entry.pieceBefore?.id ?? entry.move.promoteTo ?? "?";
+    const pieceDef = ruleset.pieces[pieceId];
+    const promote = entry.move.promoteTo ? "成" : "";
+    const capture = entry.captured ? "x" : "-";
+    return `${prefix}${turn} ${pieceDef?.display ?? pieceId} ${formatSquare(entry.move.from)}${capture}${formatSquare(entry.move.to)}${promote}`;
+  }
+
+  if (entry.move.kind === "transform") {
+    const beforeDef = ruleset.pieces[entry.pieceBefore?.id];
+    const afterDef = ruleset.pieces[entry.move.toPieceId];
+    return `${prefix}${turn} ${beforeDef?.display ?? entry.pieceBefore?.id ?? "?"}変身 ${formatSquare(entry.move.from)}→${afterDef?.display ?? entry.move.toPieceId}`;
+  }
+
+  if (entry.move.kind === "triggerEffect") {
+    const promotedDef = ruleset.pieces[entry.move.promoteTo];
+    return `${prefix}${turn} 効果 ${formatSquare(entry.move.source)} ${formatSquare(entry.move.target)}→${promotedDef?.display ?? entry.move.promoteTo}`;
+  }
+
+  if (entry.move.kind === "buildBase") {
+    const baseDef = ruleset.baseDefs?.[entry.move.baseType] ?? ruleset.bases?.[entry.move.baseType];
+    return `${prefix}${turn} ${baseDef?.display ?? entry.move.baseType}建設 ${formatSquare(entry.move.to)}`;
+  }
+
+  if (entry.move.kind === "attackBase") {
+    const outcome = entry.baseOutcome === "occupied" ? "占領" : entry.baseOutcome === "destroyed" ? "破壊" : "攻撃";
+    return `${prefix}${turn} 拠点${outcome} ${formatSquare(entry.move.target)} ${entry.baseDamage ?? entry.move.damage ?? 1}点`;
+  }
+
+  if (entry.move.kind === "compound") {
+    const parts = (entry.subEntries ?? []).map(subEntry => formatHistoryEntry({ ...subEntry, turn: entry.turn }, ruleset)).join(" / ");
+    return `${prefix}${turn} 複合 ${parts || `${entry.move.actions.length}アクション`}`;
+  }
+
+  return `${prefix}${turn} 未知の指し手`;
+}
+
+export function createTextGameRecord(state) {
+  const meta = normalizeGameMeta(state.meta);
+  const lines = [];
+  lines.push("# shogi-html 棋譜");
+  lines.push(`表題：${meta.title || "無題の対局"}`);
+  lines.push(`ルール：${state.ruleset.name ?? state.rulesetId}`);
+  lines.push(`先手：${meta.blackName || "先手"}`);
+  lines.push(`後手：${meta.whiteName || "後手"}`);
+  if (meta.eventName) lines.push(`棋戦：${meta.eventName}`);
+  if (meta.location) lines.push(`場所：${meta.location}`);
+  if (meta.startedAt) lines.push(`開始日時：${formatDateTime(meta.startedAt)}`);
+  if (meta.endedAt) lines.push(`終了日時：${formatDateTime(meta.endedAt)}`);
+  lines.push(`手数：${state.history.length}`);
+  lines.push(`結果：${formatResult(state)}`);
+  if (meta.notes) lines.push(`備考：${meta.notes}`);
+  appendSetupLogLines(lines, state);
+  lines.push("");
+  lines.push("手数  指手");
+
+  state.history.forEach((entry, index) => {
+    lines.push(`${String(index + 1).padStart(3, " ")}  ${formatHistoryEntryForText(entry, state.ruleset, state.meta)}`);
+  });
+
+  lines.push("");
+  lines.push(`終局：${formatResult(state)}`);
+  return lines.join("\n");
+}
+
+export function createKifLikeGameRecord(state) {
+  const meta = normalizeGameMeta(state.meta);
+  const lines = [];
+  lines.push(`#KIF version=shogi-html-v1`);
+  lines.push(`表題：${meta.title || "無題の対局"}`);
+  lines.push(`棋戦：${meta.eventName || "-"}`);
+  lines.push(`場所：${meta.location || "-"}`);
+  lines.push(`開始日時：${formatDateTime(meta.startedAt)}`);
+  if (meta.endedAt) lines.push(`終了日時：${formatDateTime(meta.endedAt)}`);
+  lines.push(`手合割：平手`);
+  lines.push(`先手：${meta.blackName || "先手"}`);
+  lines.push(`後手：${meta.whiteName || "後手"}`);
+  appendSetupLogLines(lines, state, "# ");
+  lines.push("手数----指手---------消費時間--");
+
+  state.history.forEach((entry, index) => {
+    lines.push(`${String(index + 1).padStart(4, " ")} ${formatKifLikeMove(entry, state.ruleset)}`);
+  });
+
+  lines.push(`まで${state.history.length}手で${formatResult(state)}`);
+  if (meta.notes) lines.push(`備考：${meta.notes}`);
+  return lines.join("\n");
+}
+
+export function formatSquare(square) {
+  return `${square.x + 1},${square.y + 1}`;
+}
+
+function formatHistoryEntryForText(entry, ruleset, meta) {
+  const player = playerDisplayNameFromMeta(meta, entry.turn);
+
+  if (entry.move.kind === "drop") {
+    const pieceDef = ruleset.pieces[entry.move.pieceId];
+    return `${player} ${formatSquare(entry.move.to)} ${pieceDef?.display ?? entry.move.pieceId}打`;
+  }
+
+  if (entry.move.kind === "move") {
+    const pieceId = entry.pieceBefore?.id ?? entry.move.promoteTo ?? "?";
+    const pieceDef = ruleset.pieces[pieceId];
+    const capture = entry.captured ? " 同" : "";
+    const promote = entry.move.promoteTo ? "成" : "";
+    return `${player} ${formatSquare(entry.move.from)} -> ${formatSquare(entry.move.to)} ${pieceDef?.display ?? pieceId}${capture}${promote}`;
+  }
+
+  if (entry.move.kind === "transform") {
+    const beforeDef = ruleset.pieces[entry.pieceBefore?.id];
+    const afterDef = ruleset.pieces[entry.move.toPieceId];
+    return `${player} ${formatSquare(entry.move.from)} ${beforeDef?.display ?? entry.pieceBefore?.id ?? "?"}変身${afterDef?.display ?? entry.move.toPieceId}`;
+  }
+
+  if (entry.move.kind === "triggerEffect") {
+    const promotedDef = ruleset.pieces[entry.move.promoteTo];
+    return `${player} ${formatSquare(entry.move.source)} 効果 ${formatSquare(entry.move.target)} ${promotedDef?.display ?? entry.move.promoteTo}`;
+  }
+
+  if (entry.move.kind === "buildBase") {
+    const baseDef = ruleset.baseDefs?.[entry.move.baseType] ?? ruleset.bases?.[entry.move.baseType];
+    return `${player} ${formatSquare(entry.move.to)} ${baseDef?.display ?? entry.move.baseType}建設`;
+  }
+
+  if (entry.move.kind === "attackBase") {
+    const outcome = entry.baseOutcome === "occupied" ? "占領" : entry.baseOutcome === "destroyed" ? "破壊" : "攻撃";
+    return `${player} ${formatSquare(entry.move.target)} 拠点${outcome} ${entry.baseDamage ?? entry.move.damage ?? 1}点`;
+  }
+
+  if (entry.move.kind === "compound") {
+    const parts = (entry.subEntries ?? []).map(subEntry => formatHistoryEntryForText({ ...subEntry, turn: entry.turn }, ruleset, meta));
+    return `${player} 複合 ${parts.join(" / ")}`;
+  }
+
+  return `${player} 未知の指し手`;
+}
+
+function formatKifLikeMove(entry, ruleset) {
+  if (entry.move.kind === "drop") {
+    const pieceDef = ruleset.pieces[entry.move.pieceId];
+    return `${formatJapaneseSquare(entry.move.to)}${pieceDef?.display ?? entry.move.pieceId}打`;
+  }
+
+  if (entry.move.kind === "move") {
+    const pieceId = entry.pieceBefore?.id ?? entry.move.promoteTo ?? "?";
+    const pieceDef = ruleset.pieces[pieceId];
+    const promote = entry.move.promoteTo ? "成" : "";
+    const from = `(${entry.move.from.x + 1}${entry.move.from.y + 1})`;
+    return `${formatJapaneseSquare(entry.move.to)}${pieceDef?.display ?? pieceId}${promote}${from}`;
+  }
+
+  if (entry.move.kind === "transform") {
+    const afterDef = ruleset.pieces[entry.move.toPieceId];
+    return `${formatJapaneseSquare(entry.move.from)}${afterDef?.display ?? entry.move.toPieceId}変`;
+  }
+
+  if (entry.move.kind === "triggerEffect") {
+    const promotedDef = ruleset.pieces[entry.move.promoteTo];
+    return `${formatJapaneseSquare(entry.move.target)}${promotedDef?.display ?? entry.move.promoteTo}効成`;
+  }
+
+  if (entry.move.kind === "buildBase") {
+    const baseDef = ruleset.baseDefs?.[entry.move.baseType] ?? ruleset.bases?.[entry.move.baseType];
+    return `${formatJapaneseSquare(entry.move.to)}${baseDef?.display ?? entry.move.baseType}建`;
+  }
+
+  if (entry.move.kind === "attackBase") {
+    const suffix = entry.baseOutcome === "occupied" ? "占" : entry.baseOutcome === "destroyed" ? "破" : "攻";
+    return `${formatJapaneseSquare(entry.move.target)}拠点${suffix}`;
+  }
+
+  if (entry.move.kind === "compound") {
+    const parts = (entry.subEntries ?? []).map(subEntry => formatKifLikeMove(subEntry, ruleset));
+    return `複合(${parts.join(" / ")})`;
+  }
+
+  return "未知の指し手";
+}
+
+function formatJapaneseSquare(square) {
+  const files = ["１", "２", "３", "４", "５", "６", "７", "８", "９", "10", "11", "12", "13", "14", "15"];
+  const ranks = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二", "十三", "十四", "十五"];
+  return `${files[square.x] ?? square.x + 1}${ranks[square.y] ?? square.y + 1}`;
+}
+
+function appendSetupLogLines(lines, state, prefix = "") {
+  const log = state.setup?.setupLog ?? [];
+  if (!log.length) return;
+  lines.push("");
+  lines.push(prefix + "編成履歴:");
+  for (const entry of log) {
+    lines.push(prefix + formatSetupLogEntry(entry, state.ruleset));
+  }
+}
+
+function formatSetupLogEntry(entry, ruleset) {
+  const player = entry.player === "system" ? "共通" : playerName(entry.player);
+  const detail = entry.detail ?? {};
+  if (entry.action === "addPiece") return `${entry.seq}. ${player} ${pieceLabel(ruleset, detail.pieceId)}を追加`;
+  if (entry.action === "removePiece") return `${entry.seq}. ${player} ${pieceLabel(ruleset, detail.pieceId)}を削除`;
+  if (entry.action === "selectFixedPack") return `${entry.seq}. ${player} 固定パック「${detail.packName ?? detail.packId}」を選択`;
+  if (entry.action === "generateRandomPacks") return `${entry.seq}. ${player} ランダムパック生成 seed=${detail.seed ?? "-"}`;
+  if (entry.action === "selectRandomPack") return `${entry.seq}. ${player} ランダムパック「${detail.packName ?? detail.packId}」を選択`;
+  if (entry.action === "placePiece") return `${entry.seq}. ${player} ${pieceLabel(ruleset, detail.pieceId)}を${formatSquare(detail.to ?? { x: 0, y: 0 })}へ配置`;
+  if (entry.action === "removePlacement") return `${entry.seq}. ${player} ${pieceLabel(ruleset, detail.pieceId)}を${formatSquare(detail.from ?? { x: 0, y: 0 })}から除去`;
+  if (entry.action === "finalize") return `${entry.seq}. ${player} 編成確定`;
+  return `${entry.seq}. ${player} ${entry.action}`;
+}
+
+function pieceLabel(ruleset, pieceId) {
+  const pieceDef = ruleset.pieces[pieceId];
+  return pieceDef ? `${pieceDef.display ?? pieceId}(${pieceDef.name ?? pieceId})` : pieceId;
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("ja-JP");
+}
+
+function formatResult(state) {
+  if (state.status.type !== "ended") return "対局中";
+  if (!state.status.winner) return "引き分け";
+  return `${playerName(state.status.winner)}勝ち`;
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: npc.js 
+========================================== 
+ 
+import { getAvailableTriggeredActions, getLegalActions } from "./action.js";
+import { applyMoveToClone } from "./applyMove.js";
+import { fromIndex, getSquare } from "./coordinates.js";
+import { isInCheck } from "./check.js";
+import { getPiecePoint } from "./pieceMetadata.js";
+
+export function getAllLegalActionsForPlayer(state, player = state.turn, options = {}) {
+  if (state.status.type !== "playing" || state.phase === "setup") return [];
+  const view = { ...state, turn: player };
+  const actions = [];
+
+  for (let index = 0; index < view.board.squares.length; index += 1) {
+    const piece = view.board.squares[index];
+    if (!piece || piece.owner !== player) continue;
+    const { x, y } = fromIndex(index, view.board.width);
+    actions.push(...getLegalActions(view, { kind: "board", x, y }, options));
+  }
+
+  for (const [pieceId, count] of Object.entries(view.hands[player] ?? {})) {
+    if (count <= 0) continue;
+    actions.push(...getLegalActions(view, { kind: "hand", owner: player, pieceId }, options));
+  }
+
+  actions.push(...getAvailableTriggeredActions(view, player));
+  return dedupeActions(actions);
+}
+
+export function chooseNpcAction(state, player = state.turn, options = {}) {
+  const actions = getAllLegalActionsForPlayer(state, player, options);
+  if (actions.length === 0) return null;
+
+  const scored = actions.map(action => ({ action, score: scoreNpcAction(state, player, action) }));
+  const bestScore = Math.max(...scored.map(item => item.score));
+  const best = scored.filter(item => item.score === bestScore);
+  return best[createDeterministicIndexSeed(state, player, best.length)]?.action ?? best[0].action;
+}
+
+export function scoreNpcAction(state, player, action) {
+  let score = 0;
+
+  if (action.kind === "move") {
+    const target = getSquare(state, action.to.x, action.to.y);
+    if (target && target.owner !== player) score += 100 + getPiecePoint(state.ruleset, target.id) * 12;
+    if (action.promoteTo) score += 25 + getPiecePoint(state.ruleset, action.promoteTo);
+    score += centerBonus(state, action.to);
+  } else if (action.kind === "drop") {
+    score += 8 + centerBonus(state, action.to);
+  } else if (action.kind === "transform") {
+    score += 14;
+  } else if (action.kind === "triggerEffect") {
+    score += 28 + getPiecePoint(state.ruleset, action.promoteTo) * 4;
+  } else if (action.kind === "buildBase") {
+    score += 22 + centerBonus(state, action.to);
+  } else if (action.kind === "attackBase") {
+    score += 45 + Number(action.damage ?? 1) * 15 + centerBonus(state, action.target);
+  } else if (action.kind === "compound") {
+    score += 10;
+    for (const subAction of action.actions ?? []) score += scoreNpcAction(state, player, subAction) * 0.8;
+  }
+
+  try {
+    const next = applyMoveToClone(state, action, { updateTurn: true, updateHistory: false });
+    const opponent = state.ruleset.players.find(candidate => candidate !== player);
+    if (opponent && isInCheck(next, opponent)) score += 60;
+    if (isInCheck(next, player)) score -= 1000;
+  } catch {
+    score -= 10000;
+  }
+
+  return Math.round(score);
+}
+
+function centerBonus(state, square) {
+  if (!square) return 0;
+  const cx = (state.board.width - 1) / 2;
+  const cy = (state.board.height - 1) / 2;
+  const dist = Math.abs(square.x - cx) + Math.abs(square.y - cy);
+  return Math.max(0, Math.round(12 - dist));
+}
+
+function createDeterministicIndexSeed(state, player, length) {
+  if (length <= 1) return 0;
+  const raw = `${state.rulesetId}:${player}:${state.history.length}:${state.turn}:${state.board.squares.map(piece => piece ? piece.owner[0] + piece.id : "_").join("")}`;
+  let hash = 0;
+  for (let i = 0; i < raw.length; i += 1) hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0;
+  return Math.abs(hash) % length;
+}
+
+function dedupeActions(actions) {
+  const seen = new Set();
+  const result = [];
+  for (const action of actions) {
+    const key = JSON.stringify(action);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(action);
+  }
+  return result;
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: pieceMetadata.js 
+========================================== 
+ 
+export const CATEGORY_LABELS = {
+  royal: "王・玉",
+  major: "大駒",
+  minor: "小駒",
+  promoted: "成駒",
+  special: "特殊駒",
+  baseBuilder: "拠点建設系",
+  air: "空中系"
+};
+
+export const USAGE_LABELS = {
+  standard: "標準駒",
+  practical: "実戦用",
+  test: "開発用"
+};
+
+export const ATTRIBUTE_LABELS = {
+  royal: "王性",
+  goldLike: "金属性",
+  promoted: "成駒",
+  fortified: "堅牢",
+  baseBuilder: "拠点建設",
+  canTransform: "変身",
+  multiAction: "複数行動",
+  airUnit: "空中駒"
+};
+
+export function getPieceCategoryLabel(category) {
+  return CATEGORY_LABELS[category] ?? category ?? "未分類";
+}
+
+export function getPieceAttributeLabel(attribute) {
+  return ATTRIBUTE_LABELS[attribute] ?? attribute;
+}
+
+export function getPieceUsageLabel(usage) {
+  return USAGE_LABELS[usage ?? "standard"] ?? usage ?? "標準駒";
+}
+
+export function getPieceAttributes(ruleset, pieceId, context = {}) {
+  const pieceDef = ruleset?.pieces?.[pieceId];
+  if (!pieceDef) return [];
+  const attrs = Array.isArray(pieceDef.attributes) ? [...pieceDef.attributes] : [];
+  return [...new Set(attrs)];
+}
+
+export function getPiecePoint(ruleset, pieceId) {
+  const pieceDef = ruleset?.pieces?.[pieceId];
+  if (!pieceDef) return 0;
+  if (pieceDef.royal) return 0;
+  if (Number.isFinite(pieceDef.point)) return Number(pieceDef.point);
+
+  // v1.5移行前の旧ルールセットを読み込んだ場合の後方互換。
+  const baseId = pieceDef.capturedAs ?? pieceId;
+  if (baseId === "R" || baseId === "B") return 5;
+  return 1;
+}
+
+export function validatePieceMetadata(ruleset) {
+  const missing = [];
+  for (const [pieceId, pieceDef] of Object.entries(ruleset?.pieces ?? {})) {
+    if (!pieceDef.description) missing.push(`${pieceId}.description`);
+    if (!pieceDef.category) missing.push(`${pieceId}.category`);
+    if (!Number.isFinite(pieceDef.point)) missing.push(`${pieceId}.point`);
+    if (!Array.isArray(pieceDef.attributes)) missing.push(`${pieceId}.attributes`);
+  }
+  return missing;
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: record.js 
+========================================== 
+ 
+import { replayHistory } from "./replay.js";
+import { cloneHistoryEntry, cloneTurnState } from "./state.js";
+import { cloneClock } from "./clock.js";
+import { createPositionHash, detectRepetition } from "./repetition.js";
+import { evaluateImpasse } from "./impasse.js";
+import { cloneGameMeta } from "./meta.js";
+import { cloneBases } from "./base.js";
+import { cloneSetup, cloneInitialPositionSnapshot } from "./setup.js";
+
+const CURRENT_RECORD_VERSION = 1;
+
+export function createGameRecord(state) {
+  return {
+    app: "shogi-html",
+    version: CURRENT_RECORD_VERSION,
+    savedAt: new Date().toISOString(),
+    meta: cloneGameMeta(state.meta),
+    rulesetId: state.rulesetId,
+    phase: state.phase ?? "playing",
+    setup: cloneSetup(state.setup),
+    initialPosition: cloneInitialPositionSnapshot(state.initialPosition ?? state.setup?.initialPosition),
+    turn: state.turn,
+    status: cloneStatus(state.status),
+    positionHash: createPositionHash(state),
+    repetition: detectRepetition(state),
+    impasse: evaluateImpasse(state),
+    clock: cloneClock(state.clock),
+    board: cloneBoardSnapshot(state),
+    turnState: cloneTurnState(state.turnState),
+    bases: cloneBases(state.bases),
+    history: state.history.map(cloneHistoryEntry)
+  };
+}
+
+export function serializeGameRecord(state) {
+  return JSON.stringify(createGameRecord(state), null, 2);
+}
+
+export function parseGameRecord(text) {
+  let record;
+  try {
+    record = JSON.parse(text);
+  } catch (error) {
+    throw new Error("JSONとして読み込めません。ファイル内容を確認してください。");
+  }
+
+  validateGameRecord(record);
+  return record;
+}
+
+export function restoreGameRecord(record, rulesetsById) {
+  validateGameRecord(record);
+
+  const ruleset = rulesetsById[record.rulesetId];
+  if (!ruleset) {
+    throw new Error(`対応していないルールセットです: ${record.rulesetId}`);
+  }
+
+  const history = record.history ?? [];
+  const state = replayHistory(ruleset, history, history.length, { initialPosition: record.initialPosition ?? record.setup?.initialPosition });
+  state.phase = record.phase ?? state.phase ?? "playing";
+  state.setup = cloneSetup(record.setup ?? state.setup);
+  state.initialPosition = cloneInitialPositionSnapshot(record.initialPosition ?? state.setup?.initialPosition);
+  state.turn = record.turn ?? state.turn;
+  state.status = record.status ? cloneStatus(record.status) : {
+    type: "playing",
+    winner: null,
+    reason: null
+  };
+  state.clock = cloneClock(record.clock);
+  restoreBoardSnapshot(state, record.board);
+  state.turnState = cloneTurnState(record.turnState);
+  state.meta = cloneGameMeta(record.meta);
+  state.bases = cloneBases(record.bases ?? state.bases);
+
+  return state;
+}
+
+function validateGameRecord(record) {
+  if (!record || typeof record !== "object") {
+    throw new Error("保存データの形式が不正です。");
+  }
+
+  if (record.app !== "shogi-html") {
+    throw new Error("このアプリの保存データではありません。");
+  }
+
+  if (!record.rulesetId || typeof record.rulesetId !== "string") {
+    throw new Error("保存データにrulesetIdがありません。");
+  }
+
+  if (!Array.isArray(record.history)) {
+    throw new Error("保存データにhistory配列がありません。");
+  }
+
+  for (const [index, entry] of record.history.entries()) {
+    if (!entry || typeof entry !== "object" || !entry.move) {
+      throw new Error(`history[${index}] の形式が不正です。`);
+    }
+  }
+}
+
+function cloneStatus(status) {
+  if (!status) return status;
+  return JSON.parse(JSON.stringify(status));
+}
+ 
+ 
+
+function cloneBoardSnapshot(state) {
+  return {
+    width: state.board.width,
+    height: state.board.height,
+    squares: state.board.squares.map(piece => piece ? { ...piece } : null)
+  };
+}
+
+function restoreBoardSnapshot(state, board) {
+  if (!board || !Array.isArray(board.squares)) return;
+  if (board.width !== state.board.width || board.height !== state.board.height) return;
+  state.board.squares = board.squares.map(piece => piece ? { ...piece } : null);
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: repetition.js 
+========================================== 
+ 
+import { applyMove } from "./applyMove.js";
+import { isInCheck } from "./check.js";
+import { createInitialState, cloneMove } from "./state.js";
+import { cloneInitialPositionSnapshot } from "./setup.js";
+
+export const REPETITION_LIMIT = 4;
+
+export function createPositionHash(state) {
+  const boardPart = state.board.squares
+    .map(piece => piece ? `${piece.owner}:${piece.id}` : "_")
+    .join(",");
+
+  const handPart = state.ruleset.players
+    .map(player => `${player}:${formatHand(state.hands[player] ?? {})}`)
+    .join("|");
+
+  const basePart = formatBases(state.bases ?? []);
+
+  const turnStatePart = state.turnState?.phase === "extraAction"
+    ? `extra:${state.turnState.forcedPiece?.x},${state.turnState.forcedPiece?.y}:${state.turnState.remainingActions}`
+    : "normal";
+
+  return [
+    `ruleset=${state.rulesetId}`,
+    `phase=${state.phase ?? "playing"}`,
+    `turn=${state.turn}`,
+    `turnState=${turnStatePart}`,
+    `board=${boardPart}`,
+    `hands=${handPart}`,
+    `bases=${basePart}`
+  ].join(";");
+}
+
+export function createPositionTimeline(ruleset, history, initialPosition = null) {
+  const state = createInitialState(ruleset);
+  if (initialPosition) restoreInitialPositionForTimeline(state, initialPosition);
+  const timeline = [createTimelineEntry(state, 0)];
+
+  for (const [index, entry] of history.entries()) {
+    applyMove(state, cloneMove(entry.move), {
+      updateTurn: true,
+      updateHistory: false
+    });
+    timeline.push(createTimelineEntry(state, index + 1));
+  }
+
+  return timeline;
+}
+
+export function detectRepetition(state) {
+  const currentHash = createPositionHash(state);
+  const timeline = createPositionTimeline(state.ruleset, state.history, state.initialPosition ?? state.setup?.initialPosition);
+  const matches = timeline.filter(entry => entry.hash === currentHash);
+
+  if (matches.length < REPETITION_LIMIT) {
+    return {
+      repeated: false,
+      hash: currentHash,
+      count: matches.length,
+      occurrences: matches.map(entry => entry.ply)
+    };
+  }
+
+  const checkedOccurrences = matches.filter(entry => entry.inCheck);
+  if (checkedOccurrences.length >= REPETITION_LIMIT) {
+    return {
+      repeated: true,
+      type: "perpetual_check",
+      hash: currentHash,
+      count: matches.length,
+      occurrences: matches.map(entry => entry.ply),
+      checkedPlayer: state.turn,
+      winner: state.turn
+    };
+  }
+
+  return {
+    repeated: true,
+    type: "sennichite",
+    hash: currentHash,
+    count: matches.length,
+    occurrences: matches.map(entry => entry.ply),
+    winner: null
+  };
+}
+
+function createTimelineEntry(state, ply) {
+  return {
+    ply,
+    hash: createPositionHash(state),
+    turn: state.turn,
+    inCheck: isInCheck(state, state.turn)
+  };
+}
+
+function formatHand(hand) {
+  return Object.entries(hand)
+    .filter(([, count]) => count > 0)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([pieceId, count]) => `${pieceId}${count}`)
+    .join(",");
+}
+ 
+ 
+
+function formatBases(bases) {
+  return bases
+    .map(base => `${base.owner}:${base.kind}:${base.x},${base.y}:${base.layer ?? "ground"}`)
+    .sort()
+    .join(",");
+}
+
+function restoreInitialPositionForTimeline(state, snapshot) {
+  const initial = cloneInitialPositionSnapshot(snapshot);
+  if (!initial?.board?.squares?.length) return;
+  if (initial.board.width === state.board.width && initial.board.height === state.board.height) {
+    state.board.squares = initial.board.squares.map(piece => piece ? { ...piece } : null);
+  }
+  state.hands = Object.fromEntries(Object.entries(initial.hands ?? state.hands).map(([player, hand]) => [player, { ...hand }]));
+  state.bases = Array.isArray(initial.bases) ? initial.bases.map(base => ({ ...base })) : [];
+  state.phase = "playing";
+  if (state.setup) state.setup.phase = "complete";
+  state.turn = initial.turn ?? state.ruleset.firstTurn ?? state.ruleset.players[0];
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: replay.js 
+========================================== 
+ 
+import { applyMove } from "./applyMove.js";
+import { createInitialState, cloneHistoryEntry as cloneStateHistoryEntry, cloneMove } from "./state.js";
+import { cloneInitialPositionSnapshot } from "./setup.js";
+
+export function replayHistory(ruleset, history, count = history.length, options = {}) {
+  const state = createInitialState(ruleset);
+  if (options.initialPosition) restoreInitialPosition(state, options.initialPosition);
+  const limit = Math.max(0, Math.min(count, history.length));
+
+  for (let index = 0; index < limit; index += 1) {
+    const entry = history[index];
+    applyMove(state, cloneMove(entry.move), {
+      updateTurn: true,
+      updateHistory: false
+    });
+
+    state.history.push(cloneHistoryEntry(entry));
+  }
+
+  state.status = {
+    type: "playing",
+    winner: null,
+    reason: null
+  };
+
+  return state;
+}
+
+function restoreInitialPosition(state, snapshot) {
+  const initial = cloneInitialPositionSnapshot(snapshot);
+  if (!initial?.board?.squares?.length) return;
+  if (initial.board.width === state.board.width && initial.board.height === state.board.height) {
+    state.board.squares = initial.board.squares.map(piece => piece ? { ...piece } : null);
+  }
+  state.hands = Object.fromEntries(Object.entries(initial.hands ?? state.hands).map(([player, hand]) => [player, { ...hand }]));
+  state.bases = Array.isArray(initial.bases) ? initial.bases.map(base => ({ ...base })) : [];
+  state.phase = "playing";
+  if (state.setup) state.setup.phase = "complete";
+  state.initialPosition = initial;
+  state.turn = initial.turn ?? state.ruleset.firstTurn ?? state.ruleset.players[0];
+}
+
+export function cloneHistoryEntry(entry) {
+  return cloneStateHistoryEntry(entry);
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: setup.js 
+========================================== 
+ 
+import { getSquare, inBoard, setSquare } from "./coordinates.js";
+import { getPiecePoint } from "./pieceMetadata.js";
+
+export function createSetupState(ruleset) {
+  const config = ruleset.setup;
+  if (!config?.enabled) return null;
+
+  const players = ruleset.players ?? ["black", "white"];
+  return {
+    phase: "select",
+    mode: config.defaultMode ?? "pointBuy",
+    currentPlayer: players[0],
+    finalizedPlayers: [],
+    setupLog: [],
+    seq: 0,
+    flow: config.flow ?? "sequential",
+    initialPosition: null,
+    selectedPieces: Object.fromEntries(players.map(player => [player, {}])),
+    placedPieces: Object.fromEntries(players.map(player => [player, {}])),
+    generatedPacks: [],
+    randomSeed: null,
+    selectedPackIds: Object.fromEntries(players.map(player => [player, null])),
+    budget: Number(config.budget ?? 20)
+  };
+}
+
+export function cloneSetup(setup) {
+  if (!setup) return null;
+  return {
+    phase: setup.phase ?? "select",
+    mode: setup.mode ?? "pointBuy",
+    currentPlayer: setup.currentPlayer ?? "black",
+    finalizedPlayers: Array.isArray(setup.finalizedPlayers) ? [...setup.finalizedPlayers] : [],
+    setupLog: Array.isArray(setup.setupLog) ? setup.setupLog.map(cloneSetupLogEntry) : [],
+    seq: Number(setup.seq ?? 0),
+    flow: setup.flow ?? "sequential",
+    initialPosition: cloneInitialPositionSnapshot(setup.initialPosition),
+    selectedPieces: cloneNestedCounts(setup.selectedPieces),
+    placedPieces: cloneNestedCounts(setup.placedPieces),
+    generatedPacks: Array.isArray(setup.generatedPacks) ? setup.generatedPacks.map(clonePack) : [],
+    randomSeed: setup.randomSeed ?? null,
+    selectedPackIds: { ...(setup.selectedPackIds ?? {}) },
+    budget: Number(setup.budget ?? 20)
+  };
+}
+
+export function isSetupEnabled(stateOrRuleset) {
+  const ruleset = stateOrRuleset.ruleset ?? stateOrRuleset;
+  return Boolean(ruleset.setup?.enabled);
+}
+
+export function isSetupActive(state) {
+  return state.phase === "setup" && state.setup?.phase !== "complete";
+}
+
+export function getSetupConfig(stateOrRuleset) {
+  const ruleset = stateOrRuleset.ruleset ?? stateOrRuleset;
+  return ruleset.setup ?? { enabled: false };
+}
+
+export function getSetupPlayer(state) {
+  return state.setup?.currentPlayer ?? state.turn;
+}
+
+export function getSetupBudget(state) {
+  return Number(state.setup?.budget ?? getSetupConfig(state).budget ?? 20);
+}
+
+export function getAllowedSetupPieces(state) {
+  const config = getSetupConfig(state);
+  const allowed = config.allowedPieces ?? Object.keys(state.ruleset.pieces);
+  return allowed.filter(pieceId => Boolean(state.ruleset.pieces[pieceId]));
+}
+
+export function getSelectedSetupCost(state, player = getSetupPlayer(state)) {
+  return Object.entries(state.setup?.selectedPieces?.[player] ?? {})
+    .reduce((total, [pieceId, count]) => total + getPiecePoint(state.ruleset, pieceId) * count, 0);
+}
+
+export function getRemainingSetupBudget(state, player = getSetupPlayer(state)) {
+  return getSetupBudget(state) - getSelectedSetupCost(state, player);
+}
+
+export function addSetupPiece(state, pieceId, player = getSetupPlayer(state)) {
+  assertSetupSelectionMutable(state, player);
+  if (!getAllowedSetupPieces(state).includes(pieceId)) throw new Error("この駒は編成に使えません。");
+
+  const maxCopies = getMaxCopies(state, pieceId);
+  const selected = state.setup.selectedPieces[player];
+  const nextCount = (selected[pieceId] ?? 0) + 1;
+  if (nextCount > maxCopies) throw new Error("この駒はこれ以上選べません。");
+
+  const nextCost = getSelectedSetupCost(state, player) + getPiecePoint(state.ruleset, pieceId);
+  if (nextCost > getSetupBudget(state)) throw new Error("編成点数を超えています。");
+
+  selected[pieceId] = nextCount;
+  logSetupEvent(state, player, "addPiece", { pieceId });
+  return cloneSetup(state.setup);
+}
+
+export function removeSetupPiece(state, pieceId, player = getSetupPlayer(state)) {
+  assertSetupSelectionMutable(state, player);
+  const selected = state.setup.selectedPieces[player];
+  const placed = state.setup.placedPieces[player];
+  const selectedCount = selected[pieceId] ?? 0;
+  if (selectedCount <= 0) return cloneSetup(state.setup);
+  if ((placed[pieceId] ?? 0) >= selectedCount) throw new Error("配置済みの駒は先に盤面から外してください。");
+
+  selected[pieceId] = selectedCount - 1;
+  if (selected[pieceId] <= 0) delete selected[pieceId];
+  logSetupEvent(state, player, "removePiece", { pieceId });
+  return cloneSetup(state.setup);
+}
+
+export function selectFixedPack(state, packId, player = getSetupPlayer(state)) {
+  assertSetupSelectionMutable(state, player);
+  const pack = (getSetupConfig(state).fixedPacks ?? []).find(candidate => candidate.id === packId);
+  if (!pack) throw new Error("指定された固定パックがありません。");
+  applyPackToPlayer(state, player, pack);
+  state.setup.mode = "fixedPack";
+  state.setup.selectedPackIds[player] = pack.id;
+  logSetupEvent(state, player, "selectFixedPack", { packId: pack.id, packName: pack.name, pieces: { ...pack.pieces } });
+  return cloneSetup(state.setup);
+}
+
+export function generateRandomPacks(state, seed = createSeed()) {
+  assertSetupActiveState(state);
+  const config = getSetupConfig(state).randomPack ?? {};
+  const count = Math.max(1, Number(config.packCount ?? 3));
+  const packSize = Math.max(1, Number(config.packSize ?? 6));
+  const budget = Number(config.budget ?? getSetupBudget(state));
+  const pool = normalizeRandomPool(state, config.pool);
+  if (pool.length === 0) throw new Error("ランダムパック候補がありません。");
+  const rng = createSeededRandom(seed);
+  const packs = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const pieces = {};
+    if (state.ruleset.pieces.K) pieces.K = 1;
+    let guard = 0;
+    while (Object.values(pieces).reduce((a, b) => a + b, 0) < packSize && guard < packSize * 80) {
+      guard += 1;
+      const pieceId = weightedPick(pool, rng);
+      const nextPieces = { ...pieces, [pieceId]: (pieces[pieceId] ?? 0) + 1 };
+      if (calculatePieceSetCost(state, nextPieces) <= budget && nextPieces[pieceId] <= getMaxCopies(state, pieceId)) {
+        pieces[pieceId] = nextPieces[pieceId];
+      }
+    }
+    packs.push({ id: `random-${index + 1}`, name: `ランダムパック${index + 1}`, pieces });
+  }
+
+  state.setup.mode = "randomPack";
+  state.setup.randomSeed = seed;
+  state.setup.generatedPacks = packs;
+  logSetupEvent(state, "system", "generateRandomPacks", { seed, packs: packs.map(clonePack) });
+  return packs.map(clonePack);
+}
+
+export function selectGeneratedPack(state, packId, player = getSetupPlayer(state)) {
+  assertSetupSelectionMutable(state, player);
+  const pack = (state.setup.generatedPacks ?? []).find(candidate => candidate.id === packId);
+  if (!pack) throw new Error("指定されたランダムパックがありません。");
+  applyPackToPlayer(state, player, pack);
+  state.setup.mode = "randomPack";
+  state.setup.selectedPackIds[player] = pack.id;
+  logSetupEvent(state, player, "selectRandomPack", { packId: pack.id, packName: pack.name, pieces: { ...pack.pieces } });
+  return cloneSetup(state.setup);
+}
+
+export function getUnplacedSetupPieces(state, player = getSetupPlayer(state)) {
+  const selected = state.setup?.selectedPieces?.[player] ?? {};
+  const placed = state.setup?.placedPieces?.[player] ?? {};
+  const result = {};
+  for (const [pieceId, count] of Object.entries(selected)) {
+    const remaining = count - (placed[pieceId] ?? 0);
+    if (remaining > 0) result[pieceId] = remaining;
+  }
+  return result;
+}
+
+export function getLegalPlacements(state, pieceId, player = getSetupPlayer(state)) {
+  if (!isSetupActive(state)) return [];
+  if (!pieceId || (getUnplacedSetupPieces(state, player)[pieceId] ?? 0) <= 0) return [];
+
+  const zones = getSetupConfig(state).placementZones ?? {};
+  const zone = zones[player];
+  const placements = [];
+  for (let y = 0; y < state.board.height; y += 1) {
+    for (let x = 0; x < state.board.width; x += 1) {
+      if (!inBoard(x, y, state.board)) continue;
+      if (getSquare(state, x, y)) continue;
+      if (!isSquareInPlacementZone({ x, y }, zone)) continue;
+      placements.push({ kind: "placement", player, pieceId, to: { x, y } });
+    }
+  }
+  return placements;
+}
+
+export function applyPlacement(state, placement) {
+  assertSetupActiveState(state);
+  const player = placement.player ?? getSetupPlayer(state);
+  assertSetupSelectionMutable(state, player);
+  if (!getLegalPlacements(state, placement.pieceId, player).some(candidate => candidate.to.x === placement.to.x && candidate.to.y === placement.to.y)) {
+    throw new Error("そのマスには配置できません。");
+  }
+
+  setSquare(state, placement.to.x, placement.to.y, { owner: player, id: placement.pieceId });
+  const placed = state.setup.placedPieces[player];
+  placed[placement.pieceId] = (placed[placement.pieceId] ?? 0) + 1;
+  logSetupEvent(state, player, "placePiece", { pieceId: placement.pieceId, to: { ...placement.to } });
+  return cloneSetup(state.setup);
+}
+
+export function removeSetupPlacementAt(state, x, y, player = getSetupPlayer(state)) {
+  assertSetupActiveState(state);
+  const piece = getSquare(state, x, y);
+  if (!piece || piece.owner !== player) return false;
+  setSquare(state, x, y, null);
+  const placed = state.setup.placedPieces[player];
+  placed[piece.id] = Math.max(0, (placed[piece.id] ?? 0) - 1);
+  if (placed[piece.id] <= 0) delete placed[piece.id];
+  logSetupEvent(state, player, "removePlacement", { pieceId: piece.id, from: { x, y } });
+  return true;
+}
+
+export function canFinalizeSetupPlayer(state, player = getSetupPlayer(state)) {
+  if (!isSetupActive(state)) return false;
+  const selected = state.setup.selectedPieces[player] ?? {};
+  const requireRoyal = getSetupConfig(state).requireRoyal !== false;
+  if (requireRoyal && !Object.keys(selected).some(pieceId => state.ruleset.pieces[pieceId]?.royal)) return false;
+  return Object.keys(getUnplacedSetupPieces(state, player)).length === 0 && Object.keys(selected).length > 0;
+}
+
+export function finalizeSetupPlayer(state, player = getSetupPlayer(state)) {
+  assertSetupActiveState(state);
+  assertSetupSelectionMutable(state, player);
+  if (!canFinalizeSetupPlayer(state, player)) throw new Error("未配置の駒があるか、王が選ばれていません。");
+
+  if (!state.setup.finalizedPlayers.includes(player)) state.setup.finalizedPlayers.push(player);
+  logSetupEvent(state, player, "finalize", { selectedPieces: { ...(state.setup.selectedPieces[player] ?? {}) } });
+  const next = state.ruleset.players.find(candidate => !state.setup.finalizedPlayers.includes(candidate));
+  if (next) {
+    state.setup.currentPlayer = next;
+    state.setup.phase = "select";
+    return cloneSetup(state.setup);
+  }
+
+  state.setup.phase = "complete";
+  state.phase = "playing";
+  state.turn = state.ruleset.firstTurn ?? state.ruleset.players[0];
+  state.status = { type: "playing", winner: null, reason: null };
+  state.initialPosition = createInitialPositionSnapshot(state);
+  state.setup.initialPosition = cloneInitialPositionSnapshot(state.initialPosition);
+  return cloneSetup(state.setup);
+}
+
+
+export function autoPlaceSetupPieces(state, player = getSetupPlayer(state), seed = createSeed()) {
+  assertSetupSelectionMutable(state, player);
+  const selected = state.setup?.selectedPieces?.[player] ?? {};
+  if (Object.values(selected).reduce((sum, count) => sum + Number(count ?? 0), 0) <= 0) {
+    throw new Error("ランダム配置する駒が選択されていません。");
+  }
+
+  clearPlayerSetupBoard(state, player);
+  state.setup.placedPieces[player] = {};
+
+  const placements = getRandomPlacementSquares(state, player, seed);
+  const piecesToPlace = expandSelectedPiecesForPlacement(state, player);
+  const royalIndex = piecesToPlace.findIndex(pieceId => state.ruleset.pieces[pieceId]?.royal);
+
+  if (royalIndex >= 0) {
+    const royalPieceId = piecesToPlace.splice(royalIndex, 1)[0];
+    const royalSquare = getRoyalPlacementSquare(state, player);
+    if (!isSquareInPlacementZone(royalSquare, getSetupConfig(state).placementZones?.[player])) {
+      throw new Error("王・玉の固定配置マスが配置エリア外です。");
+    }
+    if (getSquare(state, royalSquare.x, royalSquare.y)) {
+      throw new Error("王・玉の固定配置マスが空いていません。");
+    }
+    placeSetupPieceDirectly(state, player, royalPieceId, royalSquare);
+    removeSquareFromList(placements, royalSquare);
+  }
+
+  if (piecesToPlace.length > placements.length) {
+    throw new Error("配置可能マスが足りません。");
+  }
+
+  for (const pieceId of piecesToPlace) {
+    const square = placements.shift();
+    placeSetupPieceDirectly(state, player, pieceId, square);
+  }
+
+  logSetupEvent(state, player, "randomPlacement", { seed });
+  return cloneSetup(state.setup);
+}
+
+function expandSelectedPiecesForPlacement(state, player) {
+  const selected = state.setup?.selectedPieces?.[player] ?? {};
+  const result = [];
+  for (const [pieceId, count] of Object.entries(selected)) {
+    for (let i = 0; i < Number(count ?? 0); i += 1) result.push(pieceId);
+  }
+  return result;
+}
+
+function getRandomPlacementSquares(state, player, seed) {
+  const zone = getSetupConfig(state).placementZones?.[player];
+  const squares = [];
+  for (let y = 0; y < state.board.height; y += 1) {
+    for (let x = 0; x < state.board.width; x += 1) {
+      const square = { x, y };
+      if (!isSquareInPlacementZone(square, zone)) continue;
+      if (getSquare(state, x, y)) continue;
+      squares.push(square);
+    }
+  }
+
+  const rng = createSeededRandom(seed);
+  for (let i = squares.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    [squares[i], squares[j]] = [squares[j], squares[i]];
+  }
+  return squares;
+}
+
+function getRoyalPlacementSquare(state, player) {
+  const x = Math.floor(state.board.width / 2);
+  const y = player === "black" ? state.board.height - 1 : 0;
+  return { x, y };
+}
+
+function placeSetupPieceDirectly(state, player, pieceId, square) {
+  setSquare(state, square.x, square.y, { owner: player, id: pieceId });
+  const placed = state.setup.placedPieces[player];
+  placed[pieceId] = (placed[pieceId] ?? 0) + 1;
+}
+
+function removeSquareFromList(squares, square) {
+  const index = squares.findIndex(candidate => candidate.x === square.x && candidate.y === square.y);
+  if (index >= 0) squares.splice(index, 1);
+}
+
+export function calculatePieceSetCost(state, pieces) {
+  return Object.entries(pieces ?? {}).reduce((total, [pieceId, count]) => total + getPiecePoint(state.ruleset, pieceId) * count, 0);
+}
+
+function applyPackToPlayer(state, player, pack) {
+  clearPlayerSetupBoard(state, player);
+  state.setup.selectedPieces[player] = { ...pack.pieces };
+  state.setup.placedPieces[player] = {};
+}
+
+function clearPlayerSetupBoard(state, player) {
+  for (let y = 0; y < state.board.height; y += 1) {
+    for (let x = 0; x < state.board.width; x += 1) {
+      const piece = getSquare(state, x, y);
+      if (piece?.owner === player) setSquare(state, x, y, null);
+    }
+  }
+}
+
+function getMaxCopies(state, pieceId) {
+  const maxCopies = getSetupConfig(state).maxCopies ?? {};
+  return Number(maxCopies[pieceId] ?? maxCopies.default ?? 9);
+}
+
+function isSquareInPlacementZone(square, zone) {
+  if (!zone) return true;
+  if (zone.xMin != null && square.x < zone.xMin) return false;
+  if (zone.xMax != null && square.x > zone.xMax) return false;
+  if (zone.yMin != null && square.y < zone.yMin) return false;
+  if (zone.yMax != null && square.y > zone.yMax) return false;
+  return true;
+}
+
+function assertSetupActiveState(state) {
+  if (!isSetupActive(state)) throw new Error("編成フェーズではありません。");
+}
+
+function assertSetupSelectionMutable(state, player) {
+  assertSetupActiveState(state);
+  if (!state.ruleset.players.includes(player)) throw new Error("未知の編成プレイヤーです。");
+  if ((state.setup.flow ?? "sequential") !== "simultaneous" && player !== getSetupPlayer(state)) throw new Error("現在の編成プレイヤーではありません。");
+  if (state.setup.finalizedPlayers.includes(player)) throw new Error("このプレイヤーの編成は確定済みです。");
+}
+
+export function createInitialPositionSnapshot(state) {
+  return {
+    board: {
+      width: state.board.width,
+      height: state.board.height,
+      squares: state.board.squares.map(piece => piece ? { ...piece } : null)
+    },
+    hands: Object.fromEntries(Object.entries(state.hands ?? {}).map(([player, hand]) => [player, { ...hand }])),
+    bases: (state.bases ?? []).map(base => ({ ...base })),
+    turn: state.ruleset.firstTurn ?? state.ruleset.players[0]
+  };
+}
+
+export function cloneInitialPositionSnapshot(snapshot) {
+  if (!snapshot) return null;
+  return {
+    board: snapshot.board ? {
+      width: snapshot.board.width,
+      height: snapshot.board.height,
+      squares: Array.isArray(snapshot.board.squares) ? snapshot.board.squares.map(piece => piece ? { ...piece } : null) : []
+    } : null,
+    hands: Object.fromEntries(Object.entries(snapshot.hands ?? {}).map(([player, hand]) => [player, { ...hand }])),
+    bases: Array.isArray(snapshot.bases) ? snapshot.bases.map(base => ({ ...base })) : [],
+    turn: snapshot.turn ?? null
+  };
+}
+
+function logSetupEvent(state, player, action, detail = {}) {
+  if (!state.setup) return;
+  state.setup.seq = Number(state.setup.seq ?? 0) + 1;
+  if (!Array.isArray(state.setup.setupLog)) state.setup.setupLog = [];
+  state.setup.setupLog.push({
+    seq: state.setup.seq,
+    at: new Date().toISOString(),
+    player,
+    action,
+    detail: JSON.parse(JSON.stringify(detail ?? {}))
+  });
+}
+
+function cloneSetupLogEntry(entry) {
+  return {
+    seq: Number(entry.seq ?? 0),
+    at: entry.at ?? null,
+    player: entry.player ?? null,
+    action: entry.action ?? "unknown",
+    detail: JSON.parse(JSON.stringify(entry.detail ?? {}))
+  };
+}
+
+function cloneNestedCounts(value = {}) {
+  return Object.fromEntries(Object.entries(value).map(([key, counts]) => [key, { ...(counts ?? {}) }]));
+}
+
+function clonePack(pack) {
+  return { id: pack.id, name: pack.name, pieces: { ...(pack.pieces ?? {}) } };
+}
+
+function normalizeRandomPool(state, pool = null) {
+  const source = pool ?? getAllowedSetupPieces(state).map(pieceId => ({ pieceId, weight: 1 }));
+  return source
+    .map(item => typeof item === "string" ? { pieceId: item, weight: 1 } : item)
+    .filter(item => item?.pieceId && state.ruleset.pieces[item.pieceId] && Number(item.weight ?? 1) > 0)
+    .filter(item => {
+      const usage = state.ruleset.pieces[item.pieceId]?.usage ?? "standard";
+      return state.ruleset.testOnly || usage !== "test";
+    });
+}
+
+function weightedPick(pool, rng) {
+  const total = pool.reduce((sum, item) => sum + Number(item.weight ?? 1), 0);
+  let threshold = rng() * total;
+  for (const item of pool) {
+    threshold -= Number(item.weight ?? 1);
+    if (threshold <= 0) return item.pieceId;
+  }
+  return pool.at(-1).pieceId;
+}
+
+function createSeed() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createSeededRandom(seed) {
+  let hash = 2166136261;
+  for (const ch of String(seed)) {
+    hash ^= ch.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return function random() {
+    hash += 0x6D2B79F5;
+    let t = hash;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: state.js 
+========================================== 
+ 
+import { setSquare } from "./coordinates.js";
+import { cloneClock } from "./clock.js";
+import { cloneBases } from "./base.js";
+import { createDefaultMeta, cloneGameMeta } from "./meta.js";
+import { createSetupState, cloneSetup, cloneInitialPositionSnapshot } from "./setup.js";
+
+export function createInitialState(ruleset) {
+  const width = ruleset.board.width;
+  const height = ruleset.board.height;
+
+  const state = {
+    ruleset,
+    rulesetId: ruleset.id,
+    board: {
+      width,
+      height,
+      squares: Array.from({ length: width * height }, () => null)
+    },
+    phase: ruleset.setup?.enabled ? "setup" : "playing",
+    setup: createSetupState(ruleset),
+    initialPosition: null,
+    turn: ruleset.firstTurn ?? ruleset.players[0],
+    hands: createEmptyHands(ruleset),
+    bases: cloneBases(ruleset.initialBases ?? []),
+    history: [],
+    status: {
+      type: "playing",
+      winner: null,
+      reason: null
+    },
+    clock: null,
+    meta: createDefaultMeta(),
+    turnState: createDefaultTurnState()
+  };
+
+  if (!ruleset.setup?.enabled) {
+    for (const item of ruleset.initialPieces) {
+      setSquare(state, item.x, item.y, {
+        owner: item.owner,
+        id: item.id
+      });
+    }
+  }
+
+  return state;
+}
+
+export function createEmptyHands(ruleset) {
+  const hands = {};
+  for (const player of ruleset.players) {
+    hands[player] = {};
+  }
+  return hands;
+}
+
+export function cloneState(state) {
+  return {
+    ruleset: state.ruleset,
+    rulesetId: state.rulesetId,
+    board: {
+      width: state.board.width,
+      height: state.board.height,
+      squares: state.board.squares.map(piece => piece ? { ...piece } : null)
+    },
+    phase: state.phase ?? "playing",
+    setup: cloneSetup(state.setup),
+    initialPosition: cloneInitialPositionSnapshot(state.initialPosition ?? state.setup?.initialPosition),
+    turn: state.turn,
+    hands: cloneHands(state.hands),
+    bases: cloneBases(state.bases),
+    history: state.history.map(cloneHistoryEntry),
+    status: { ...state.status },
+    clock: cloneClock(state.clock),
+    meta: cloneGameMeta(state.meta),
+    turnState: cloneTurnState(state.turnState)
+  };
+}
+
+export function cloneHistoryEntry(entry) {
+  return {
+    turn: entry.turn,
+    move: cloneMove(entry.move),
+    captured: entry.captured ? { ...entry.captured } : null,
+    pieceBefore: entry.pieceBefore ? { ...entry.pieceBefore } : null,
+    pieceAfter: entry.pieceAfter ? { ...entry.pieceAfter } : null,
+    subEntries: Array.isArray(entry.subEntries) ? entry.subEntries.map(cloneHistoryEntry) : undefined,
+    builtBase: entry.builtBase ? { ...entry.builtBase } : null,
+    baseBefore: entry.baseBefore ? { ...entry.baseBefore } : null,
+    baseAfter: entry.baseAfter ? { ...entry.baseAfter } : null,
+    baseOutcome: entry.baseOutcome ?? null,
+    baseDamage: entry.baseDamage ?? null,
+    turnStateBefore: cloneTurnState(entry.turnStateBefore),
+    turnStateAfter: cloneTurnState(entry.turnStateAfter)
+  };
+}
+
+export function cloneMove(move) {
+  if (move.kind === "move") {
+    return {
+      kind: "move",
+      from: { ...move.from },
+      to: { ...move.to },
+      promoteTo: move.promoteTo ?? null
+    };
+  }
+
+  if (move.kind === "drop") {
+    return {
+      kind: "drop",
+      pieceId: move.pieceId,
+      to: { ...move.to }
+    };
+  }
+
+  if (move.kind === "transform") {
+    return {
+      kind: "transform",
+      from: { ...move.from },
+      toPieceId: move.toPieceId
+    };
+  }
+
+  if (move.kind === "triggerEffect") {
+    return {
+      kind: "triggerEffect",
+      effectKind: move.effectKind,
+      source: { ...move.source },
+      target: { ...move.target },
+      promoteTo: move.promoteTo
+    };
+  }
+
+  if (move.kind === "compound") {
+    return {
+      kind: "compound",
+      actions: move.actions.map(cloneMove)
+    };
+  }
+
+  if (move.kind === "buildBase") {
+    return {
+      kind: "buildBase",
+      actor: { ...move.actor },
+      baseType: move.baseType,
+      to: { ...move.to },
+      id: move.id ?? null
+    };
+  }
+
+  if (move.kind === "attackBase") {
+    return {
+      kind: "attackBase",
+      actor: { ...move.actor },
+      target: { ...move.target },
+      baseId: move.baseId,
+      damage: move.damage ?? 1
+    };
+  }
+
+  throw new Error(`未知の指し手種別です: ${move.kind}`);
+}
+
+export function createDefaultTurnState() {
+  return {
+    phase: "normal",
+    actionIndex: 0,
+    remainingActions: 1,
+    forcedPiece: null,
+    reason: null,
+    compoundActions: []
+  };
+}
+
+export function cloneTurnState(turnState) {
+  if (!turnState) return createDefaultTurnState();
+  return {
+    phase: turnState.phase ?? "normal",
+    actionIndex: Number(turnState.actionIndex ?? 0),
+    remainingActions: Number(turnState.remainingActions ?? 1),
+    forcedPiece: turnState.forcedPiece ? { ...turnState.forcedPiece } : null,
+    reason: turnState.reason ?? null,
+    compoundActions: Array.isArray(turnState.compoundActions)
+      ? turnState.compoundActions.map(cloneMove)
+      : []
+  };
+}
+
+export function isExtraActionTurnState(turnState) {
+  return Boolean(turnState && turnState.phase === "extraAction" && turnState.remainingActions > 0 && turnState.forcedPiece);
+}
+
+function cloneHands(hands) {
+  const cloned = {};
+  for (const [owner, pieces] of Object.entries(hands)) {
+    cloned[owner] = { ...pieces };
+  }
+  return cloned;
+}
+
+export function opposite(stateOrRuleset, player) {
+  const players = stateOrRuleset.players ?? stateOrRuleset.ruleset.players;
+  const index = players.indexOf(player);
+  if (index === -1) {
+    throw new Error(`未知のプレイヤーです: ${player}`);
+  }
+  return players[(index + 1) % players.length];
+}
+
+export function playerName(player) {
+  if (player === "spectator") return "観戦者";
+  return player === "black" ? "先手" : "後手";
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: undo.js 
+========================================== 
+ 
+import { getSquare, setSquare } from "./coordinates.js";
+import { cloneTurnState, createDefaultTurnState } from "./state.js";
+import { removeBaseById, restoreBaseSnapshot } from "./base.js";
+
+export function undoLastMove(state) {
+  const entry = state.history.pop();
+  if (!entry) return false;
+
+  state.status = {
+    type: "playing",
+    winner: null,
+    reason: null
+  };
+  state.turn = entry.turn;
+  state.turnState = cloneTurnState(entry.turnStateBefore ?? createDefaultTurnState());
+
+  if (entry.move.kind === "move") {
+    undoBoardMove(state, entry);
+    return true;
+  }
+
+  if (entry.move.kind === "drop") {
+    undoDropMove(state, entry);
+    return true;
+  }
+
+  if (entry.move.kind === "transform") {
+    undoTransformAction(state, entry);
+    return true;
+  }
+
+  if (entry.move.kind === "triggerEffect") {
+    undoTriggerEffectAction(state, entry);
+    return true;
+  }
+
+  if (entry.move.kind === "compound") {
+    undoCompoundAction(state, entry);
+    return true;
+  }
+
+  if (entry.move.kind === "buildBase") {
+    undoBuildBaseAction(state, entry);
+    return true;
+  }
+
+  if (entry.move.kind === "attackBase") {
+    undoAttackBaseAction(state, entry);
+    return true;
+  }
+
+  throw new Error(`未知の指し手種別です: ${entry.move.kind}`);
+}
+
+function undoBoardMove(state, entry) {
+  const { move, turn } = entry;
+  const currentPiece = getSquare(state, move.to.x, move.to.y);
+
+  const pieceBefore = entry.pieceBefore
+    ? { ...entry.pieceBefore }
+    : inferPieceBefore(state, entry, currentPiece);
+
+  if (entry.captured) {
+    removeCapturedPieceFromHand(state, turn, entry.captured);
+  }
+
+  setSquare(state, move.from.x, move.from.y, pieceBefore);
+  setSquare(state, move.to.x, move.to.y, entry.captured ? { ...entry.captured } : null);
+}
+
+function undoDropMove(state, entry) {
+  const { move, turn } = entry;
+  setSquare(state, move.to.x, move.to.y, null);
+  state.hands[turn][move.pieceId] = (state.hands[turn][move.pieceId] ?? 0) + 1;
+}
+
+function undoTransformAction(state, entry) {
+  const { move } = entry;
+  setSquare(state, move.from.x, move.from.y, entry.pieceBefore ? { ...entry.pieceBefore } : null);
+}
+
+function undoTriggerEffectAction(state, entry) {
+  const { move } = entry;
+  setSquare(state, move.target.x, move.target.y, entry.pieceBefore ? { ...entry.pieceBefore } : null);
+}
+
+function inferPieceBefore(state, entry, currentPiece) {
+  if (!currentPiece) {
+    throw new Error("取り消し対象の駒が移動先にありません。");
+  }
+
+  if (!entry.move.promoteTo) {
+    return { owner: entry.turn, id: currentPiece.id };
+  }
+
+  const promotedDef = state.ruleset.pieces[currentPiece.id];
+  return {
+    owner: entry.turn,
+    id: promotedDef?.capturedAs ?? currentPiece.id
+  };
+}
+
+function removeCapturedPieceFromHand(state, owner, capturedPiece) {
+  const capturedDef = state.ruleset.pieces[capturedPiece.id];
+  const handPieceId = capturedDef?.capturedAs;
+  if (!handPieceId) return;
+
+  const count = state.hands[owner][handPieceId] ?? 0;
+  if (count <= 1) {
+    delete state.hands[owner][handPieceId];
+    return;
+  }
+
+  state.hands[owner][handPieceId] = count - 1;
+}
+
+function undoCompoundAction(state, entry) {
+  const subEntries = Array.isArray(entry.subEntries) ? entry.subEntries : [];
+  for (const subEntry of [...subEntries].reverse()) {
+    if (subEntry.move.kind === "move") {
+      undoBoardMove(state, subEntry);
+    } else if (subEntry.move.kind === "drop") {
+      undoDropMove(state, subEntry);
+    } else if (subEntry.move.kind === "transform") {
+      undoTransformAction(state, subEntry);
+    } else if (subEntry.move.kind === "triggerEffect") {
+      undoTriggerEffectAction(state, subEntry);
+    } else if (subEntry.move.kind === "buildBase") {
+      undoBuildBaseAction(state, subEntry);
+    } else if (subEntry.move.kind === "attackBase") {
+      undoAttackBaseAction(state, subEntry);
+    }
+  }
+}
+
+function undoBuildBaseAction(state, entry) {
+  if (entry.builtBase?.id && removeBaseById(state, entry.builtBase.id)) return;
+  const move = entry.move;
+  if (!Array.isArray(state.bases)) return;
+  const index = state.bases.findIndex(base => base.x === move.to.x && base.y === move.to.y && base.owner === entry.turn && base.kind === move.baseType);
+  if (index >= 0) state.bases.splice(index, 1);
+}
+
+function undoAttackBaseAction(state, entry) {
+  restoreBaseSnapshot(state, entry.baseBefore);
+}
+ 
+ 
+ 
+ 

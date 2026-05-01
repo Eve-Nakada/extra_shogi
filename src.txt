@@ -1,0 +1,106 @@
+========================================== 
+FILE: main.js 
+========================================== 
+ 
+import { createInitialState } from "./core/state.js";
+import { RULESETS, RULESET_BY_ID } from "./rulesets/index.js";
+import { initController } from "./ui/controller.js";
+
+const elements = {
+  board: document.getElementById("board"),
+  blackHand: document.getElementById("black-hand"),
+  whiteHand: document.getElementById("white-hand"),
+  status: document.getElementById("status"),
+  turnBar: document.getElementById("turn-bar"),
+  message: document.getElementById("message"),
+  rulesetSelect: document.getElementById("ruleset-select"),
+  resignButton: document.getElementById("resign-button"),
+  impasseButton: document.getElementById("impasse-button"),
+  resetButton: document.getElementById("reset-button"),
+  undoButton: document.getElementById("undo-button"),
+  replayStartButton: document.getElementById("replay-start-button"),
+  replayPrevButton: document.getElementById("replay-prev-button"),
+  replayNextButton: document.getElementById("replay-next-button"),
+  replayEndButton: document.getElementById("replay-end-button"),
+  saveLocalButton: document.getElementById("save-local-button"),
+  loadLocalButton: document.getElementById("load-local-button"),
+  exportButton: document.getElementById("export-button"),
+  importButton: document.getElementById("import-button"),
+  importInput: document.getElementById("import-input"),
+  historyList: document.getElementById("history-list"),
+  historyCount: document.getElementById("history-count"),
+  promotionDialog: document.getElementById("promotion-dialog"),
+  promotionText: document.getElementById("promotion-text"),
+  promotionPromoteButton: document.getElementById("promotion-promote-button"),
+  promotionNormalButton: document.getElementById("promotion-normal-button"),
+  promotionCancelButton: document.getElementById("promotion-cancel-button"),
+  boardPerspectiveSelect: document.getElementById("board-perspective-select"),
+  flipBoardButton: document.getElementById("flip-board-button"),
+  legalHighlightEnabled: document.getElementById("legal-highlight-enabled"),
+  confirmResignEnabled: document.getElementById("confirm-resign-enabled"),
+  confirmResetEnabled: document.getElementById("confirm-reset-enabled"),
+  metaTitle: document.getElementById("meta-title"),
+  metaBlackName: document.getElementById("meta-black-name"),
+  metaWhiteName: document.getElementById("meta-white-name"),
+  metaEventName: document.getElementById("meta-event-name"),
+  metaLocation: document.getElementById("meta-location"),
+  metaNotes: document.getElementById("meta-notes"),
+  exportTextButton: document.getElementById("export-text-button"),
+  copyTextButton: document.getElementById("copy-text-button"),
+  textRecordOutput: document.getElementById("text-record-output"),
+  clockEnabled: document.getElementById("clock-enabled"),
+  clockMinutes: document.getElementById("clock-minutes"),
+  clockIncrement: document.getElementById("clock-increment"),
+  clockApplyButton: document.getElementById("clock-apply-button"),
+  clockPauseButton: document.getElementById("clock-pause-button"),
+  clockDisplay: document.getElementById("clock-display"),
+  onlineStatus: document.getElementById("online-status"),
+  onlineRole: document.getElementById("online-role"),
+  onlineGameId: document.getElementById("online-game-id"),
+  signalInput: document.getElementById("signal-input"),
+  signalOutput: document.getElementById("signal-output"),
+  showSignalQrButton: document.getElementById("show-signal-qr-button"),
+  signalQrOutput: document.getElementById("signal-qr-output"),
+  scanSignalQrButton: document.getElementById("scan-signal-qr-button"),
+  stopSignalQrScanButton: document.getElementById("stop-signal-qr-scan-button"),
+  signalQrVideo: document.getElementById("signal-qr-video"),
+  signalQrCanvas: document.getElementById("signal-qr-canvas"),
+  signalQrFileInput: document.getElementById("signal-qr-file-input"),
+  hostOfferButton: document.getElementById("host-offer-button"),
+  guestAnswerButton: document.getElementById("guest-answer-button"),
+  spectatorAnswerButton: document.getElementById("spectator-answer-button"),
+  hostAcceptAnswerButton: document.getElementById("host-accept-answer-button"),
+  reconnectOfferButton: document.getElementById("reconnect-offer-button"),
+  copySignalButton: document.getElementById("copy-signal-button"),
+  disconnectButton: document.getElementById("disconnect-button"),
+  syncButton: document.getElementById("sync-button"),
+  syncRequestButton: document.getElementById("sync-request-button"),
+  pingButton: document.getElementById("ping-button"),
+  clearConnectionLogButton: document.getElementById("clear-connection-log-button"),
+  connectionDetail: document.getElementById("connection-detail"),
+  connectionLog: document.getElementById("connection-log"),
+  pieceGuideContent: document.getElementById("piece-guide-content"),
+  selectedPieceGuide: document.getElementById("selected-piece-guide"),
+  specialActions: document.getElementById("special-actions"),
+  setupPanel: document.getElementById("setup-panel"),
+  setupContent: document.getElementById("setup-content"),
+  npcPlayerSelect: document.getElementById("npc-player-select")
+};
+
+for (const [name, element] of Object.entries(elements)) {
+  if (!element) {
+    throw new Error(`必要なDOM要素が見つかりません: ${name}`);
+  }
+}
+
+initController({
+  createState: rulesetId => createInitialState(RULESET_BY_ID[rulesetId]),
+  elements,
+  rulesets: RULESETS,
+  rulesetsById: RULESET_BY_ID,
+  defaultRulesetId: "standard-shogi"
+});
+ 
+ 
+ 
+ 

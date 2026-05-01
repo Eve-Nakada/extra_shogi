@@ -6,29 +6,40 @@ export function initSignalQrTools(elements, callbacks = {}) {
   let scanTimer = null;
   let detector = null;
 
-  elements.showSignalQrButton.addEventListener("click", () => renderSignalQr(elements, callbacks));
+  elements.showSignalQrButton.addEventListener("click", () => {
+    renderSignalQr(elements, callbacks).catch(error => {
+      callbacks.setMessage?.("QRコード表示中にエラーが発生しました。出力コードのコピーを使ってください。");
+      notifyLog(callbacks, "qr-create-error", "QRコード表示中にエラーが発生しました。", String(error?.message ?? error));
+    });
+  });
   elements.scanSignalQrButton.addEventListener("click", () => startQrScan());
   elements.stopSignalQrScanButton.addEventListener("click", () => stopQrScan("QR読み取りを停止しました。"));
   elements.signalQrFileInput.addEventListener("change", () => readQrFromSelectedImage());
 
   async function startQrScan() {
     if (!window.isSecureContext) {
-      callbacks.setMessage?.("カメラ読み取りにはHTTPSまたはlocalhostの安全な環境が必要です。");
+      callbacks.setMessage?.("カメラ読み取りにはHTTPSまたはlocalhostの安全な環境が必要です。QR画像読み取り、または手動貼り付けを使ってください。");
+      notifyLog(callbacks, "qr-scan-error", "安全な環境ではないため、カメラを開始できませんでした。", { isSecureContext: window.isSecureContext });
       return;
     }
 
     if (!navigator.mediaDevices?.getUserMedia) {
       callbacks.setMessage?.("このブラウザはカメラ読み取りに対応していません。入力コード欄へ手動で貼り付けてください。");
+      notifyLog(callbacks, "qr-scan-error", "getUserMediaが利用できません。");
       return;
     }
 
-    if (!("BarcodeDetector" in window)) {
-      callbacks.setMessage?.("このブラウザはQRのカメラ認識に未対応です。QR画像読み取り、または手動貼り付けを使ってください。");
+    const canDecode = isBarcodeDetectorAvailable() || isJsQrAvailable();
+    if (!canDecode) {
+      callbacks.setMessage?.("QR読み取りライブラリを利用できません。ネットワーク接続を確認するか、入力コード欄へ手動で貼り付けてください。");
+      notifyLog(callbacks, "qr-scan-error", "BarcodeDetector/jsQRのどちらも利用できません。");
       return;
     }
 
     try {
-      detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+      detector = isBarcodeDetectorAvailable()
+        ? new window.BarcodeDetector({ formats: ["qr_code"] })
+        : null;
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" } },
         audio: false
@@ -39,24 +50,27 @@ export function initSignalQrTools(elements, callbacks = {}) {
       elements.scanSignalQrButton.disabled = true;
       await elements.signalQrVideo.play();
       scanTimer = window.setInterval(scanVideoFrame, SCAN_INTERVAL_MS);
-      callbacks.addLog?.("qr-scan", "QRカメラ読み取りを開始しました。");
+      const decoderName = detector ? "BarcodeDetector" : "jsQR";
+      notifyLog(callbacks, "qr-scan", `QRカメラ読み取りを開始しました。方式: ${decoderName}`);
       callbacks.setMessage?.("カメラを起動しました。相手のQRコードを画面内に入れてください。");
     } catch (error) {
       stopQrScan();
       callbacks.setMessage?.(createCameraErrorMessage(error));
+      notifyLog(callbacks, "qr-scan-error", "カメラを起動できませんでした。", String(error?.message ?? error));
     }
   }
 
   async function scanVideoFrame() {
-    if (!detector || elements.signalQrVideo.hidden) return;
+    if (elements.signalQrVideo.hidden) return;
     try {
-      const results = await detector.detect(elements.signalQrVideo);
-      const value = results?.[0]?.rawValue?.trim();
+      const value = detector
+        ? await decodeWithBarcodeDetector(detector, elements.signalQrVideo)
+        : decodeVideoWithJsQr(elements);
       if (!value) return;
       applyDecodedSignal(value, "QRコードを読み取り、入力コードへ反映しました。内容を確認してから接続操作を続けてください。");
       stopQrScan();
     } catch (error) {
-      callbacks.addLog?.("qr-scan-error", "QR読み取り中にエラーが発生しました。", String(error?.message ?? error));
+      notifyLog(callbacks, "qr-scan-error", "QR読み取り中にエラーが発生しました。", String(error?.message ?? error));
     }
   }
 
@@ -64,25 +78,27 @@ export function initSignalQrTools(elements, callbacks = {}) {
     const file = elements.signalQrFileInput.files?.[0];
     if (!file) return;
 
-    if (!("BarcodeDetector" in window)) {
-      callbacks.setMessage?.("このブラウザはQR画像認識に未対応です。入力コード欄へ手動で貼り付けてください。");
+    const canDecode = isBarcodeDetectorAvailable() || isJsQrAvailable();
+    if (!canDecode) {
+      callbacks.setMessage?.("QR画像読み取りライブラリを利用できません。入力コード欄へ手動で貼り付けてください。 ");
       elements.signalQrFileInput.value = "";
+      notifyLog(callbacks, "qr-image-error", "BarcodeDetector/jsQRのどちらも利用できません。");
       return;
     }
 
     try {
-      const image = await createImageBitmap(file);
-      const imageDetector = new window.BarcodeDetector({ formats: ["qr_code"] });
-      const results = await imageDetector.detect(image);
-      const value = results?.[0]?.rawValue?.trim();
+      const value = isBarcodeDetectorAvailable()
+        ? await decodeImageFileWithBarcodeDetector(file)
+        : await decodeImageFileWithJsQr(file, elements);
       if (!value) {
         callbacks.setMessage?.("選択した画像からQRコードを読み取れませんでした。");
+        notifyLog(callbacks, "qr-image", "選択した画像からQRコードを読み取れませんでした。", { name: file.name, size: file.size });
         return;
       }
       applyDecodedSignal(value, "QR画像を読み取り、入力コードへ反映しました。内容を確認してから接続操作を続けてください。");
     } catch (error) {
       callbacks.setMessage?.("QR画像の読み取りに失敗しました。");
-      callbacks.addLog?.("qr-image-error", "QR画像の読み取りに失敗しました。", String(error?.message ?? error));
+      notifyLog(callbacks, "qr-image-error", "QR画像の読み取りに失敗しました。", String(error?.message ?? error));
     } finally {
       elements.signalQrFileInput.value = "";
     }
@@ -90,7 +106,7 @@ export function initSignalQrTools(elements, callbacks = {}) {
 
   function applyDecodedSignal(value, message) {
     elements.signalInput.value = value;
-    callbacks.addLog?.("qr-read", "QRコードから入力コードを読み取りました。", summarizeDecodedValue(value));
+    notifyLog(callbacks, "qr-read", "QRコードから入力コードを読み取りました。", summarizeDecodedValue(value));
     callbacks.setMessage?.(message);
   }
 
@@ -109,14 +125,18 @@ export function initSignalQrTools(elements, callbacks = {}) {
     elements.signalQrVideo.hidden = true;
     elements.stopSignalQrScanButton.hidden = true;
     elements.scanSignalQrButton.disabled = false;
-    if (message) callbacks.setMessage?.(message);
+    if (message) {
+      callbacks.setMessage?.(message);
+      notifyLog(callbacks, "qr-scan", message);
+    }
   }
 }
 
 async function renderSignalQr(elements, callbacks = {}) {
   const text = elements.signalOutput.value.trim();
   if (!text) {
-    callbacks.setMessage?.("QR表示する出力コードがありません。");
+    callbacks.setMessage?.("QR表示する出力コードがありません。先にホスト開始、またはゲスト回答作成を行ってください。");
+    notifyLog(callbacks, "qr-create", "QR表示する出力コードがありません。");
     return;
   }
 
@@ -124,6 +144,7 @@ async function renderSignalQr(elements, callbacks = {}) {
 
   if (!window.QRCode?.toCanvas) {
     callbacks.setMessage?.("QRコード生成ライブラリを読み込めませんでした。出力コードのコピーを使ってください。");
+    notifyLog(callbacks, "qr-create-error", "QRCodeライブラリを利用できません。");
     return;
   }
 
@@ -139,12 +160,66 @@ async function renderSignalQr(elements, callbacks = {}) {
     const lengthNote = text.length > QR_WARNING_LENGTH
       ? "コードが長いため、読み取りにくい場合はコピー貼り付けを使ってください。"
       : "相手の端末で読み取ってください。";
-    callbacks.addLog?.("qr-create", "出力コードをQR表示しました。", { length: text.length });
+    notifyLog(callbacks, "qr-create", "出力コードをQR表示しました。", { length: text.length });
     callbacks.setMessage?.(`出力コードをQR表示しました。${lengthNote}`);
   } catch (error) {
     callbacks.setMessage?.("QRコードの作成に失敗しました。出力コードが長すぎる可能性があります。");
-    callbacks.addLog?.("qr-create-error", "QRコードの作成に失敗しました。", String(error?.message ?? error));
+    notifyLog(callbacks, "qr-create-error", "QRコードの作成に失敗しました。", String(error?.message ?? error));
   }
+}
+
+function isBarcodeDetectorAvailable() {
+  return "BarcodeDetector" in window;
+}
+
+function isJsQrAvailable() {
+  return typeof window.jsQR === "function";
+}
+
+async function decodeWithBarcodeDetector(detector, source) {
+  const results = await detector.detect(source);
+  return results?.[0]?.rawValue?.trim() ?? null;
+}
+
+function decodeVideoWithJsQr(elements) {
+  const video = elements.signalQrVideo;
+  if (!video.videoWidth || !video.videoHeight) return null;
+  const imageData = drawSourceToImageData(video, video.videoWidth, video.videoHeight, elements);
+  const result = window.jsQR(imageData.data, imageData.width, imageData.height);
+  return result?.data?.trim() ?? null;
+}
+
+async function decodeImageFileWithBarcodeDetector(file) {
+  const image = await createImageBitmap(file);
+  const imageDetector = new window.BarcodeDetector({ formats: ["qr_code"] });
+  const results = await imageDetector.detect(image);
+  image.close?.();
+  return results?.[0]?.rawValue?.trim() ?? null;
+}
+
+async function decodeImageFileWithJsQr(file, elements) {
+  const image = await createImageBitmap(file);
+  try {
+    const imageData = drawSourceToImageData(image, image.width, image.height, elements);
+    const result = window.jsQR(imageData.data, imageData.width, imageData.height);
+    return result?.data?.trim() ?? null;
+  } finally {
+    image.close?.();
+  }
+}
+
+function drawSourceToImageData(source, width, height, elements) {
+  const canvas = elements.signalQrCanvas;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  canvas.width = width;
+  canvas.height = height;
+  context.drawImage(source, 0, 0, width, height);
+  return context.getImageData(0, 0, width, height);
+}
+
+function notifyLog(callbacks, type, text, detail = null) {
+  callbacks.addLog?.(type, text, detail);
+  callbacks.onUpdate?.();
 }
 
 function summarizeDecodedValue(value) {

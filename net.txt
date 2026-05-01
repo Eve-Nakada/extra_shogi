@@ -1,0 +1,748 @@
+========================================== 
+FILE: connectionLog.js 
+========================================== 
+ 
+export function createConnectionLog(options = {}) {
+  return {
+    maxEntries: Math.max(1, Number(options.maxEntries ?? 80)),
+    nextId: 1,
+    entries: []
+  };
+}
+
+export function addConnectionLog(log, entry, now = new Date()) {
+  if (!log || !Array.isArray(log.entries)) {
+    throw new Error("通信ログの形式が不正です。");
+  }
+
+  const normalized = {
+    id: log.nextId,
+    at: now instanceof Date ? now.toISOString() : String(now),
+    level: entry.level ?? "info",
+    direction: entry.direction ?? "local",
+    type: entry.type ?? "event",
+    text: entry.text ?? "",
+    detail: entry.detail ?? null
+  };
+
+  log.nextId += 1;
+  log.entries.push(normalized);
+
+  while (log.entries.length > log.maxEntries) {
+    log.entries.shift();
+  }
+
+  return normalized;
+}
+
+export function clearConnectionLog(log) {
+  if (!log || !Array.isArray(log.entries)) return;
+  log.entries.length = 0;
+}
+
+export function summarizeMessage(message) {
+  if (!message || typeof message !== "object") return "不明なメッセージ";
+
+  const seq = Number.isInteger(message.seq) ? ` #${message.seq}` : "";
+  const type = message.type ?? "unknown";
+  const player = message.player ? ` ${message.player}` : "";
+
+  if (type === "setup") return `編成同期${seq}${player}${message.setupAction ? ` (${message.setupAction})` : ""}`;
+  if (type === "move") return `指し手${seq}${player}`;
+  if (type === "sync") return `局面同期${message.record?.history ? ` ${message.record.history.length}手` : ""}`;
+  if (type === "sync-request") return `局面同期要求${seq}${message.reason ? ` (${message.reason})` : ""}`;
+  if (type === "clock") return `時計同期${seq}`;
+  if (type === "resign") return `投了${seq}${player}`;
+  if (type === "ping") return `疎通確認${seq}`;
+  if (type === "pong") return `疎通応答${seq}`;
+
+  return `${type}${seq}${player}`.trim();
+}
+
+export function createSnapshotText(snapshot) {
+  if (!snapshot) return "未接続";
+  const parts = [
+    `状態=${snapshot.status ?? "unknown"}`,
+    `接続=${snapshot.connected ? "yes" : "no"}`,
+    `役割=${snapshot.role ?? "-"}`,
+    `手番=${snapshot.localPlayer ?? "-"}`
+  ];
+
+  if (snapshot.spectating) parts.push("観戦=yes");
+  if (snapshot.connectionState) parts.push(`pc=${snapshot.connectionState}`);
+  if (snapshot.iceConnectionState) parts.push(`ice=${snapshot.iceConnectionState}`);
+  if (snapshot.channelState) parts.push(`dc=${snapshot.channelState}`);
+  if (snapshot.peerCount != null) parts.push(`peers=${snapshot.peerCount}`);
+
+  return parts.join(" / ");
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: gameSync.js 
+========================================== 
+ 
+import { applyMove } from "../core/applyMove.js";
+import { updateGameStatus, resign } from "../core/gameStatus.js";
+import { getLegalActions } from "../core/action.js";
+import { createGameRecord, restoreGameRecord } from "../core/record.js";
+import { cloneClock } from "../core/clock.js";
+import { cloneHistoryEntry, cloneMove } from "../core/state.js";
+
+export const WIRE_PROTOCOL_VERSION = 6;
+
+export function createSyncMessage(state) {
+  return {
+    type: "sync",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    record: createGameRecord(state)
+  };
+}
+
+export function createSetupMessage(state, setupAction = "update", player = state.setup?.currentPlayer ?? state.turn) {
+  return {
+    type: "setup",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    seq: Number(state.setup?.seq ?? 0),
+    player,
+    setupAction,
+    record: createGameRecord(state),
+    clock: cloneClock(state.clock)
+  };
+}
+
+export function applyIncomingSetup(message, rulesetsById) {
+  if (!message || message.type !== "setup") {
+    return { ok: false, reason: "message_type" };
+  }
+
+  if (!isCompatibleProtocol(message.protocolVersion)) {
+    return { ok: false, reason: "protocol_version" };
+  }
+
+  if (!message.record) {
+    return { ok: false, reason: "record" };
+  }
+
+  try {
+    return { ok: true, state: restoreSetupRecord(message.record, rulesetsById) };
+  } catch (error) {
+    return { ok: false, reason: "restore", error };
+  }
+}
+
+export function createMoveMessage(state) {
+  const entry = state.history.at(-1);
+  if (!entry) {
+    throw new Error("送信する指し手履歴がありません。");
+  }
+
+  return {
+    type: "move",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    seq: state.history.length,
+    player: entry.turn,
+    move: cloneMove(entry.move),
+    entry: cloneHistoryEntry(entry),
+    clock: cloneClock(state.clock)
+  };
+}
+
+export function createResignMessage(state, player) {
+  return {
+    type: "resign",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    seq: state.history.length,
+    player,
+    clock: cloneClock(state.clock)
+  };
+}
+
+export function createClockMessage(state) {
+  return {
+    type: "clock",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    seq: state.history.length,
+    clock: cloneClock(state.clock)
+  };
+}
+
+export function createSyncRequestMessage(state, reason = "manual") {
+  return {
+    type: "sync-request",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    seq: state.history.length,
+    reason,
+    clock: cloneClock(state.clock)
+  };
+}
+
+export function createPingMessage(state) {
+  return {
+    type: "ping",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    seq: state.history.length
+  };
+}
+
+export function createPongMessage(state, pingMessage = {}) {
+  return {
+    type: "pong",
+    protocolVersion: WIRE_PROTOCOL_VERSION,
+    seq: state.history.length,
+    pingSentAt: pingMessage.sentAt ?? null
+  };
+}
+
+export function applyIncomingMove(state, message) {
+  if (!message || message.type !== "move") {
+    return { ok: false, reason: "message_type" };
+  }
+
+  if (!isCompatibleProtocol(message.protocolVersion)) {
+    return { ok: false, reason: "protocol_version" };
+  }
+
+  const expectedSeq = state.history.length + 1;
+  if (message.seq !== expectedSeq) {
+    return { ok: false, reason: "sequence", expectedSeq, actualSeq: message.seq };
+  }
+
+  if (message.player !== state.turn) {
+    return { ok: false, reason: "turn", expectedPlayer: state.turn, actualPlayer: message.player };
+  }
+
+  const move = message.entry?.move ?? message.move;
+  if (!move || !isMoveLegalNow(state, move)) {
+    return { ok: false, reason: "illegal_move" };
+  }
+
+  applyMove(state, move);
+  updateGameStatus(state);
+  if (message.clock) state.clock = cloneClock(message.clock);
+  return { ok: true };
+}
+
+export function applyIncomingResign(state, message) {
+  if (!message || message.type !== "resign") {
+    return { ok: false, reason: "message_type" };
+  }
+
+  if (!isCompatibleProtocol(message.protocolVersion)) {
+    return { ok: false, reason: "protocol_version" };
+  }
+
+  if (!state.ruleset.players.includes(message.player)) {
+    return { ok: false, reason: "player" };
+  }
+
+  if (message.clock) state.clock = cloneClock(message.clock);
+  resign(state, message.player);
+  return { ok: true };
+}
+
+export function applyIncomingClock(state, message) {
+  if (!message || message.type !== "clock") {
+    return { ok: false, reason: "message_type" };
+  }
+
+  if (!isCompatibleProtocol(message.protocolVersion)) {
+    return { ok: false, reason: "protocol_version" };
+  }
+
+  if (message.seq !== state.history.length) {
+    return { ok: false, reason: "sequence", expectedSeq: state.history.length, actualSeq: message.seq };
+  }
+
+  state.clock = cloneClock(message.clock);
+  return { ok: true };
+}
+
+export function isMoveLegalNow(state, move) {
+  const selection = selectionFromMove(state, move);
+  if (!selection) return false;
+
+  return getLegalActions(state, selection).some(candidate => sameMove(candidate, move));
+}
+
+export function selectionFromMove(state, move) {
+  if (!move || typeof move !== "object") return null;
+
+  if (move.kind === "move") {
+    return {
+      kind: "board",
+      x: move.from?.x,
+      y: move.from?.y
+    };
+  }
+
+  if (move.kind === "drop") {
+    return {
+      kind: "hand",
+      owner: state.turn,
+      pieceId: move.pieceId
+    };
+  }
+
+  if (move.kind === "transform") {
+    return { kind: "board", x: move.from?.x, y: move.from?.y };
+  }
+
+  if (move.kind === "triggerEffect") {
+    return { kind: "board", x: move.source?.x, y: move.source?.y };
+  }
+
+  if (move.kind === "compound") {
+    const first = move.actions?.[0];
+    return first ? selectionFromMove(state, first) : null;
+  }
+
+  if (move.kind === "buildBase") {
+    return { kind: "board", x: move.actor?.x, y: move.actor?.y };
+  }
+
+  if (move.kind === "attackBase") {
+    return { kind: "board", x: move.actor?.x, y: move.actor?.y };
+  }
+
+  return null;
+}
+
+export function sameMove(a, b) {
+  if (!a || !b || a.kind !== b.kind) return false;
+
+  if (a.kind === "move") {
+    return (
+      a.from.x === b.from.x &&
+      a.from.y === b.from.y &&
+      a.to.x === b.to.x &&
+      a.to.y === b.to.y &&
+      (a.promoteTo ?? null) === (b.promoteTo ?? null)
+    );
+  }
+
+  if (a.kind === "drop") {
+    return (
+      a.pieceId === b.pieceId &&
+      a.to.x === b.to.x &&
+      a.to.y === b.to.y
+    );
+  }
+
+  if (a.kind === "transform") {
+    return a.from.x === b.from.x && a.from.y === b.from.y && a.toPieceId === b.toPieceId;
+  }
+
+  if (a.kind === "triggerEffect") {
+    return (
+      a.effectKind === b.effectKind &&
+      a.source.x === b.source.x &&
+      a.source.y === b.source.y &&
+      a.target.x === b.target.x &&
+      a.target.y === b.target.y &&
+      a.promoteTo === b.promoteTo
+    );
+  }
+
+  if (a.kind === "compound") {
+    if (!Array.isArray(a.actions) || !Array.isArray(b.actions)) return false;
+    if (a.actions.length !== b.actions.length) return false;
+    return a.actions.every((action, index) => sameMove(action, b.actions[index]));
+  }
+
+  if (a.kind === "buildBase") {
+    return (
+      a.baseType === b.baseType &&
+      a.actor.x === b.actor.x &&
+      a.actor.y === b.actor.y &&
+      a.to.x === b.to.x &&
+      a.to.y === b.to.y
+    );
+  }
+
+  if (a.kind === "attackBase") {
+    return (
+      a.actor.x === b.actor.x &&
+      a.actor.y === b.actor.y &&
+      a.target.x === b.target.x &&
+      a.target.y === b.target.y &&
+      (a.baseId ?? null) === (b.baseId ?? null) &&
+      Number(a.damage ?? 1) === Number(b.damage ?? 1)
+    );
+  }
+
+  return false;
+}
+
+export function isCompatibleProtocol(version) {
+  // v2.4 accepts earlier v1-v5 messages for normal move/sync compatibility.
+  return version === 1 || version === 2 || version === 3 || version === 4 || version === 5 || version === WIRE_PROTOCOL_VERSION;
+}
+
+function restoreSetupRecord(record, rulesetsById) {
+  return restoreGameRecord(record, rulesetsById);
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: rtcSession.js 
+========================================== 
+ 
+const DEFAULT_ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" }
+];
+
+export class RtcGameSession {
+  constructor(callbacks = {}) {
+    this.callbacks = callbacks;
+    this.peerConnection = null;
+    this.channel = null;
+    this.role = null;
+    this.localPlayer = null;
+    this.gameId = null;
+    this.status = "idle";
+    this.reconnectToken = null;
+  }
+
+  getSnapshot() {
+    return {
+      status: this.status,
+      role: this.role,
+      localPlayer: this.localPlayer,
+      gameId: this.gameId,
+      reconnectToken: this.reconnectToken,
+      connected: this.isConnected(),
+      spectating: this.localPlayer === "spectator",
+      connectionState: this.peerConnection?.connectionState ?? null,
+      iceConnectionState: this.peerConnection?.iceConnectionState ?? null,
+      iceGatheringState: this.peerConnection?.iceGatheringState ?? null,
+      channelState: this.channel?.readyState ?? null,
+      peerCount: this.peerConnection ? 1 : 0
+    };
+  }
+
+  isConnected() {
+    return this.channel?.readyState === "open";
+  }
+
+  isOnlineMode() {
+    return this.status !== "idle";
+  }
+
+  async createHost(options = {}) {
+    this.disconnect({ silent: true, keepIdentity: false });
+    this.role = options.spectatorHost ? "spectator-host" : "host";
+    this.localPlayer = options.spectatorHost ? "black" : "black";
+    this.gameId = options.gameId ?? createId();
+    this.reconnectToken = options.reconnectToken ?? createId();
+    this.setStatus("creating-offer");
+
+    this.peerConnection = this.createPeerConnection();
+    this.channel = this.peerConnection.createDataChannel("shogi-html-v07", {
+      ordered: true
+    });
+    this.setupDataChannel(this.channel);
+
+    const offer = await this.peerConnection.createOffer();
+    await this.peerConnection.setLocalDescription(offer);
+    await waitForIceGatheringComplete(this.peerConnection);
+
+    this.emitSignal(createSignalEnvelope({
+      type: options.reconnect ? "reconnect-offer" : "offer",
+      gameId: this.gameId,
+      reconnectToken: this.reconnectToken,
+      roleHint: this.role,
+      description: this.peerConnection.localDescription
+    }));
+    this.setStatus("waiting-answer");
+  }
+
+  async createReconnectOffer() {
+    if (!this.gameId || !this.localPlayer) {
+      throw new Error("再接続する対局情報がありません。先に通常接続を開始してください。");
+    }
+
+    const gameId = this.gameId;
+    const reconnectToken = this.reconnectToken ?? createId();
+    const localPlayer = this.localPlayer;
+    const role = this.role ?? "host";
+    this.disconnect({ silent: true, keepIdentity: true });
+    this.role = role;
+    this.localPlayer = localPlayer;
+    this.gameId = gameId;
+    this.reconnectToken = reconnectToken;
+    await this.createOfferWithIdentity("reconnect-offer");
+  }
+
+  async createGuestAnswer(signalText, options = {}) {
+    const offer = parseSignal(signalText, null);
+    if (offer.type !== "offer" && offer.type !== "reconnect-offer") {
+      throw new Error("オファーコードまたは再接続オファーコードが必要です。");
+    }
+
+    this.disconnect({ silent: true, keepIdentity: false });
+    this.role = options.spectator ? "spectator" : "guest";
+    this.localPlayer = options.spectator ? "spectator" : "white";
+    this.gameId = offer.gameId;
+    this.reconnectToken = offer.reconnectToken ?? createId();
+    this.setStatus("creating-answer");
+
+    this.peerConnection = this.createPeerConnection();
+    this.peerConnection.ondatachannel = event => {
+      this.channel = event.channel;
+      this.setupDataChannel(this.channel);
+    };
+
+    await this.peerConnection.setRemoteDescription(offer.description);
+    const answer = await this.peerConnection.createAnswer();
+    await this.peerConnection.setLocalDescription(answer);
+    await waitForIceGatheringComplete(this.peerConnection);
+
+    this.emitSignal(createSignalEnvelope({
+      type: offer.type === "reconnect-offer" ? "reconnect-answer" : "answer",
+      gameId: this.gameId,
+      reconnectToken: this.reconnectToken,
+      roleHint: this.role,
+      description: this.peerConnection.localDescription
+    }));
+    this.setStatus("waiting-connect");
+  }
+
+  async acceptAnswer(signalText) {
+    if (!this.peerConnection || !this.role) {
+      throw new Error("ホスト開始後に回答コードを読み込んでください。");
+    }
+
+    const answer = parseSignal(signalText, null);
+    if (answer.type !== "answer" && answer.type !== "reconnect-answer") {
+      throw new Error("回答コードまたは再接続回答コードが必要です。");
+    }
+    if (answer.gameId !== this.gameId) {
+      throw new Error("対局IDが一致しません。別の回答コードの可能性があります。");
+    }
+
+    await this.peerConnection.setRemoteDescription(answer.description);
+    this.setStatus("waiting-connect");
+  }
+
+  send(message) {
+    if (!this.isConnected()) {
+      throw new Error("通信が接続されていません。");
+    }
+
+    this.channel.send(JSON.stringify({
+      ...message,
+      gameId: this.gameId,
+      sentAt: new Date().toISOString()
+    }));
+  }
+
+  disconnect(options = {}) {
+    const keepIdentity = Boolean(options.keepIdentity);
+    const identity = keepIdentity ? {
+      role: this.role,
+      localPlayer: this.localPlayer,
+      gameId: this.gameId,
+      reconnectToken: this.reconnectToken
+    } : null;
+
+    this.channel?.close();
+    this.peerConnection?.close();
+    this.channel = null;
+    this.peerConnection = null;
+    this.role = identity?.role ?? null;
+    this.localPlayer = identity?.localPlayer ?? null;
+    this.gameId = identity?.gameId ?? null;
+    this.reconnectToken = identity?.reconnectToken ?? null;
+    this.status = keepIdentity ? "disconnected" : "idle";
+
+    if (!options.silent) {
+      this.callbacks.onStatus?.(this.getSnapshot());
+    }
+  }
+
+  createPeerConnection() {
+    if (typeof RTCPeerConnection === "undefined") {
+      throw new Error("このブラウザはRTCPeerConnectionに対応していません。HTTPSまたはlocalhostで開いてください。");
+    }
+
+    const peerConnection = new RTCPeerConnection({
+      iceServers: DEFAULT_ICE_SERVERS
+    });
+
+    peerConnection.onconnectionstatechange = () => {
+      const state = peerConnection.connectionState;
+      if (state === "connected") {
+        this.setStatus("connected");
+      } else if (state === "failed") {
+        this.setStatus("failed");
+      } else if (state === "disconnected") {
+        this.setStatus("disconnected");
+      } else if (state === "closed") {
+        this.setStatus(this.gameId ? "disconnected" : "idle");
+      }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+      this.callbacks.onStatus?.(this.getSnapshot());
+    };
+
+    return peerConnection;
+  }
+
+  setupDataChannel(channel) {
+    channel.onopen = () => {
+      this.setStatus("connected");
+      this.callbacks.onOpen?.(this.getSnapshot());
+    };
+
+    channel.onclose = () => {
+      if (this.status !== "idle") {
+        this.setStatus("disconnected");
+      }
+      this.callbacks.onClose?.(this.getSnapshot());
+    };
+
+    channel.onerror = () => {
+      this.setStatus("failed");
+    };
+
+    channel.onmessage = event => {
+      try {
+        const message = JSON.parse(event.data);
+        this.callbacks.onMessage?.(message, this.getSnapshot());
+      } catch (error) {
+        this.callbacks.onError?.(new Error("通信メッセージをJSONとして読めません。"));
+      }
+    };
+  }
+
+  emitSignal(signal) {
+    this.callbacks.onSignal?.(JSON.stringify(signal, null, 2));
+  }
+
+  setStatus(status) {
+    this.status = status;
+    this.callbacks.onStatus?.(this.getSnapshot());
+  }
+
+  async createOfferWithIdentity(type) {
+    this.setStatus("creating-offer");
+    this.peerConnection = this.createPeerConnection();
+    this.channel = this.peerConnection.createDataChannel("shogi-html-v07", { ordered: true });
+    this.setupDataChannel(this.channel);
+    const offer = await this.peerConnection.createOffer();
+    await this.peerConnection.setLocalDescription(offer);
+    await waitForIceGatheringComplete(this.peerConnection);
+    this.emitSignal(createSignalEnvelope({
+      type,
+      gameId: this.gameId,
+      reconnectToken: this.reconnectToken,
+      roleHint: this.role,
+      description: this.peerConnection.localDescription
+    }));
+    this.setStatus("waiting-answer");
+  }
+}
+
+export function parseSignal(text, expectedType = null) {
+  let signal;
+  try {
+    signal = JSON.parse(text);
+  } catch (error) {
+    throw new Error("接続コードをJSONとして読み込めません。");
+  }
+
+  if (!signal || signal.app !== "shogi-html" || signal.kind !== "webrtc-signal") {
+    throw new Error("このアプリ用の接続コードではありません。");
+  }
+
+  if (expectedType && signal.type !== expectedType) {
+    throw new Error(`${expectedType}コードが必要ですが、${signal.type ?? "不明"}コードが入力されています。`);
+  }
+
+  const allowedTypes = ["offer", "answer", "reconnect-offer", "reconnect-answer"];
+  if (!allowedTypes.includes(signal.type)) {
+    throw new Error("接続コードの種別が不正です。");
+  }
+
+  if (!signal.gameId || !signal.description?.type || !signal.description?.sdp) {
+    throw new Error("接続コードの形式が不正です。コピー内容を確認してください。");
+  }
+
+  return signal;
+}
+
+function createSignalEnvelope({ type, gameId, reconnectToken, roleHint, description }) {
+  return {
+    app: "shogi-html",
+    kind: "webrtc-signal",
+    version: 3,
+    type,
+    gameId,
+    reconnectToken,
+    roleHint,
+    description: {
+      type: description.type,
+      sdp: description.sdp
+    },
+    createdAt: new Date().toISOString()
+  };
+}
+
+function waitForIceGatheringComplete(peerConnection) {
+  if (peerConnection.iceGatheringState === "complete") {
+    return Promise.resolve();
+  }
+
+  return new Promise(resolve => {
+    const timeoutId = window.setTimeout(finish, 5000);
+
+    function finish() {
+      window.clearTimeout(timeoutId);
+      peerConnection.removeEventListener("icegatheringstatechange", handleStateChange);
+      resolve();
+    }
+
+    function handleStateChange() {
+      if (peerConnection.iceGatheringState === "complete") {
+        finish();
+      }
+    }
+
+    peerConnection.addEventListener("icegatheringstatechange", handleStateChange);
+  });
+}
+
+function createId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  const random = Math.random().toString(36).slice(2);
+  return `game-${Date.now()}-${random}`;
+}
+
+
+export function summarizeSignal(signal) {
+  const parsed = typeof signal === "string" ? parseSignal(signal, null) : signal;
+  const type = parsed.type ?? "unknown";
+  const role = parsed.roleHint ?? "unknown";
+  const gameId = parsed.gameId ? String(parsed.gameId).slice(0, 8) : "-";
+  return `${type} / ${role} / ${gameId}`;
+}
+
+export function canAcceptSignalForCurrentSession(signal, snapshot = {}) {
+  const parsed = typeof signal === "string" ? parseSignal(signal, null) : signal;
+  if (!snapshot.gameId) return true;
+  if (parsed.type === "offer") return true;
+  return parsed.gameId === snapshot.gameId;
+}
+ 
+ 
+ 
+ 

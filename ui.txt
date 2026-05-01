@@ -1,3 +1,7 @@
+========================================== 
+FILE: controller.js 
+========================================== 
+ 
 import { applyAction, getAvailableTriggeredActions, getLegalActions } from "../core/action.js";
 import { createClock, formatClockMs, getDisplayRemainingMs, pauseClock, startClock, switchClockAfterMove, updateClock } from "../core/clock.js";
 import { getSquare } from "../core/coordinates.js";
@@ -300,8 +304,7 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
     initSignalQrTools(elements, {
       setMessage,
-      addLog: (type, text, detail = null) => addLog("local", type, text, detail),
-      onUpdate: () => renderConnectionLog(elements.connectionLog, connectionLog)
+      addLog: (type, text, detail = null) => addLog("local", type, text, detail)
     });
   }
 
@@ -1363,5 +1366,1337 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
     elements.message.textContent = message;
   }
 }
+ 
+ 
+ 
+ 
+========================================== 
+FILE: qrSignal.js 
+========================================== 
+ 
+const QR_WARNING_LENGTH = 1800;
+const SCAN_INTERVAL_MS = 350;
+
+export function initSignalQrTools(elements, callbacks = {}) {
+  let stream = null;
+  let scanTimer = null;
+  let detector = null;
+
+  elements.showSignalQrButton.addEventListener("click", () => renderSignalQr(elements, callbacks));
+  elements.scanSignalQrButton.addEventListener("click", () => startQrScan());
+  elements.stopSignalQrScanButton.addEventListener("click", () => stopQrScan("QR読み取りを停止しました。"));
+  elements.signalQrFileInput.addEventListener("change", () => readQrFromSelectedImage());
+
+  async function startQrScan() {
+    if (!window.isSecureContext) {
+      callbacks.setMessage?.("カメラ読み取りにはHTTPSまたはlocalhostの安全な環境が必要です。");
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      callbacks.setMessage?.("このブラウザはカメラ読み取りに対応していません。入力コード欄へ手動で貼り付けてください。");
+      return;
+    }
+
+    if (!("BarcodeDetector" in window)) {
+      callbacks.setMessage?.("このブラウザはQRのカメラ認識に未対応です。QR画像読み取り、または手動貼り付けを使ってください。");
+      return;
+    }
+
+    try {
+      detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false
+      });
+      elements.signalQrVideo.srcObject = stream;
+      elements.signalQrVideo.hidden = false;
+      elements.stopSignalQrScanButton.hidden = false;
+      elements.scanSignalQrButton.disabled = true;
+      await elements.signalQrVideo.play();
+      scanTimer = window.setInterval(scanVideoFrame, SCAN_INTERVAL_MS);
+      callbacks.addLog?.("qr-scan", "QRカメラ読み取りを開始しました。");
+      callbacks.setMessage?.("カメラを起動しました。相手のQRコードを画面内に入れてください。");
+    } catch (error) {
+      stopQrScan();
+      callbacks.setMessage?.(createCameraErrorMessage(error));
+    }
+  }
+
+  async function scanVideoFrame() {
+    if (!detector || elements.signalQrVideo.hidden) return;
+    try {
+      const results = await detector.detect(elements.signalQrVideo);
+      const value = results?.[0]?.rawValue?.trim();
+      if (!value) return;
+      applyDecodedSignal(value, "QRコードを読み取り、入力コードへ反映しました。内容を確認してから接続操作を続けてください。");
+      stopQrScan();
+    } catch (error) {
+      callbacks.addLog?.("qr-scan-error", "QR読み取り中にエラーが発生しました。", String(error?.message ?? error));
+    }
+  }
+
+  async function readQrFromSelectedImage() {
+    const file = elements.signalQrFileInput.files?.[0];
+    if (!file) return;
+
+    if (!("BarcodeDetector" in window)) {
+      callbacks.setMessage?.("このブラウザはQR画像認識に未対応です。入力コード欄へ手動で貼り付けてください。");
+      elements.signalQrFileInput.value = "";
+      return;
+    }
+
+    try {
+      const image = await createImageBitmap(file);
+      const imageDetector = new window.BarcodeDetector({ formats: ["qr_code"] });
+      const results = await imageDetector.detect(image);
+      const value = results?.[0]?.rawValue?.trim();
+      if (!value) {
+        callbacks.setMessage?.("選択した画像からQRコードを読み取れませんでした。");
+        return;
+      }
+      applyDecodedSignal(value, "QR画像を読み取り、入力コードへ反映しました。内容を確認してから接続操作を続けてください。");
+    } catch (error) {
+      callbacks.setMessage?.("QR画像の読み取りに失敗しました。");
+      callbacks.addLog?.("qr-image-error", "QR画像の読み取りに失敗しました。", String(error?.message ?? error));
+    } finally {
+      elements.signalQrFileInput.value = "";
+    }
+  }
+
+  function applyDecodedSignal(value, message) {
+    elements.signalInput.value = value;
+    callbacks.addLog?.("qr-read", "QRコードから入力コードを読み取りました。", summarizeDecodedValue(value));
+    callbacks.setMessage?.(message);
+  }
+
+  function stopQrScan(message = null) {
+    if (scanTimer) {
+      window.clearInterval(scanTimer);
+      scanTimer = null;
+    }
+    if (stream) {
+      for (const track of stream.getTracks()) track.stop();
+      stream = null;
+    }
+    detector = null;
+    elements.signalQrVideo.pause?.();
+    elements.signalQrVideo.srcObject = null;
+    elements.signalQrVideo.hidden = true;
+    elements.stopSignalQrScanButton.hidden = true;
+    elements.scanSignalQrButton.disabled = false;
+    if (message) callbacks.setMessage?.(message);
+  }
+}
+
+async function renderSignalQr(elements, callbacks = {}) {
+  const text = elements.signalOutput.value.trim();
+  if (!text) {
+    callbacks.setMessage?.("QR表示する出力コードがありません。");
+    return;
+  }
+
+  elements.signalQrOutput.replaceChildren();
+
+  if (!window.QRCode?.toCanvas) {
+    callbacks.setMessage?.("QRコード生成ライブラリを読み込めませんでした。出力コードのコピーを使ってください。");
+    return;
+  }
+
+  try {
+    const canvas = document.createElement("canvas");
+    await window.QRCode.toCanvas(canvas, text, {
+      errorCorrectionLevel: text.length > QR_WARNING_LENGTH ? "L" : "M",
+      margin: 2,
+      width: 320
+    });
+    elements.signalQrOutput.appendChild(canvas);
+
+    const lengthNote = text.length > QR_WARNING_LENGTH
+      ? "コードが長いため、読み取りにくい場合はコピー貼り付けを使ってください。"
+      : "相手の端末で読み取ってください。";
+    callbacks.addLog?.("qr-create", "出力コードをQR表示しました。", { length: text.length });
+    callbacks.setMessage?.(`出力コードをQR表示しました。${lengthNote}`);
+  } catch (error) {
+    callbacks.setMessage?.("QRコードの作成に失敗しました。出力コードが長すぎる可能性があります。");
+    callbacks.addLog?.("qr-create-error", "QRコードの作成に失敗しました。", String(error?.message ?? error));
+  }
+}
+
+function summarizeDecodedValue(value) {
+  try {
+    const parsed = JSON.parse(value);
+    return {
+      type: parsed.type ?? null,
+      gameId: parsed.gameId ?? null,
+      version: parsed.version ?? parsed.protocolVersion ?? null,
+      length: value.length
+    };
+  } catch {
+    return { length: value.length, json: false };
+  }
+}
+
+function createCameraErrorMessage(error) {
+  if (error?.name === "NotAllowedError") return "カメラ権限が許可されませんでした。ブラウザの権限設定を確認してください。";
+  if (error?.name === "NotFoundError") return "利用できるカメラが見つかりませんでした。";
+  if (error?.name === "NotReadableError") return "カメラを開始できませんでした。他のアプリが使用中の可能性があります。";
+  return "カメラを起動できませんでした。HTTPS環境、ブラウザ権限、カメラ設定を確認してください。";
+}
+ 
+ 
+========================================== 
+FILE: renderBoard.js 
+========================================== 
+ 
+import { findRoyal, isInCheck } from "../core/check.js";
+import { getSquare } from "../core/coordinates.js";
+import { findBaseAt } from "../core/base.js";
+
+export function renderBoard(boardElement, state, uiState) {
+  setBoardCssVariables(boardElement, state);
+  boardElement.innerHTML = "";
+
+  const perspective = uiState.view?.perspective ?? "black";
+  boardElement.classList.toggle("view-black", perspective === "black");
+  boardElement.classList.toggle("view-white", perspective === "white");
+
+  const lastMove = getLastMove(state);
+  const checkedRoyal = getCheckedRoyal(state);
+
+  for (const y of displayRange(state.board.height, perspective)) {
+    for (const x of displayRange(state.board.width, perspective)) {
+      const square = document.createElement("button");
+      square.type = "button";
+      square.className = "square";
+      square.dataset.x = String(x);
+      square.dataset.y = String(y);
+      square.setAttribute("aria-label", createSquareLabel(state, x, y));
+
+      if (isSelectedSquare(uiState, x, y)) {
+        square.classList.add("selected");
+      }
+
+      if (uiState.view?.showLegalMoves !== false) {
+        const legalMove = findLegalMoveTo(uiState, x, y);
+        const setupPlacement = findSetupPlacementTo(uiState, x, y);
+        if (isSetupZoneSquare(state, uiState, x, y)) {
+          square.classList.add("setup-zone");
+        }
+        if (setupPlacement) {
+          square.classList.add("legal", "setup-placement");
+        }
+        if (legalMove) {
+          square.classList.add("legal");
+          if (hasPromotionMoveTo(uiState, x, y)) {
+            square.classList.add("promotion-target");
+          }
+          if (uiState.inspected?.kind === "board") {
+            square.classList.add("inspected-move");
+          }
+          if (getSquare(state, x, y)) {
+            square.classList.add("capture");
+          }
+        }
+      }
+
+      if (sameSquare(lastMove?.from, { x, y })) square.classList.add("last-move-from");
+      if (sameSquare(lastMove?.to, { x, y })) square.classList.add("last-move-to");
+      if (sameSquare(checkedRoyal, { x, y })) square.classList.add("royal-in-check");
+
+      const base = findBaseAt(state, x, y);
+      if (base) {
+        square.classList.add("base-square");
+        square.appendChild(createBaseElement(state, base));
+      }
+
+      const piece = getSquare(state, x, y);
+      if (piece?.owner === state.turn && state.status.type === "playing") {
+        square.classList.add("active-turn-piece-square");
+      }
+      if (piece) {
+        square.appendChild(createPieceElement(state, piece, perspective));
+      }
+
+      boardElement.appendChild(square);
+    }
+  }
+}
+
+function displayRange(length, perspective) {
+  const values = Array.from({ length }, (_, index) => index);
+  return perspective === "white" ? values.reverse() : values;
+}
+
+function setBoardCssVariables(boardElement, state) {
+  const targets = [
+    boardElement,
+    boardElement.closest(".game-panel"),
+    boardElement.closest(".layout"),
+    boardElement.closest("#app")
+  ].filter(Boolean);
+
+  for (const target of targets) {
+    target.style.setProperty("--board-width", state.board.width);
+    target.style.setProperty("--board-height", state.board.height);
+  }
+}
+
+function createBaseElement(state, base) {
+  const baseDef = state.ruleset.baseDefs?.[base.kind] ?? state.ruleset.bases?.[base.kind];
+  const element = document.createElement("span");
+  element.className = `base-marker ${base.owner}`;
+  const hp = base.hp != null ? String(base.hp) : "-";
+  const maxHp = base.maxHp ?? baseDef?.hp ?? null;
+  element.textContent = baseDef?.display ?? base.kind;
+  const hpElement = document.createElement("span");
+  hpElement.className = "base-hp";
+  hpElement.textContent = maxHp != null ? `${hp}/${maxHp}` : hp;
+  element.appendChild(hpElement);
+  element.title = `${base.owner === "black" ? "先手" : "後手"} ${baseDef?.name ?? base.kind} HP ${hp}${maxHp != null ? `/${maxHp}` : ""} / 打ち範囲 ${base.dropRadius ?? baseDef?.dropRadius ?? 1}`;
+  return element;
+}
+
+function createPieceElement(state, piece, perspective) {
+  const pieceDef = state.ruleset.pieces[piece.id];
+  const element = document.createElement("span");
+  element.className = `piece ${piece.owner}`;
+  if (perspective === "white") element.classList.add("viewer-white");
+  if (piece.owner === state.turn && state.status.type === "playing") {
+    element.classList.add("active-turn-piece");
+  }
+  if (pieceDef?.promoted) element.classList.add("promoted");
+  if (pieceDef?.category) element.classList.add(`piece-`);
+  const label = pieceDef?.display ?? piece.id;
+  if (String(label).length >= 2) element.classList.add("piece-long-label");
+  element.textContent = label;
+  element.title = pieceDef?.name ?? piece.id;
+  return element;
+}
+
+function isSelectedSquare(uiState, x, y) {
+  return (
+    uiState.selected?.kind === "board" &&
+    uiState.selected.x === x &&
+    uiState.selected.y === y
+  );
+}
+
+function findLegalMoveTo(uiState, x, y) {
+  return uiState.legalMoves.find(move => move.to?.x === x && move.to?.y === y);
+}
+
+function hasPromotionMoveTo(uiState, x, y) {
+  return (uiState.legalMoves ?? []).some(move => move.to?.x === x && move.to?.y === y && move.promoteTo);
+}
+
+function getLastMove(state) {
+  const entry = state.history.at(-1);
+  if (!entry?.move) return null;
+
+  if (entry.move.kind === "move") {
+    return { from: entry.move.from, to: entry.move.to };
+  }
+
+  if (entry.move.kind === "drop") {
+    return { from: null, to: entry.move.to };
+  }
+
+  if (entry.move.kind === "transform") {
+    return { from: null, to: entry.move.from };
+  }
+
+  if (entry.move.kind === "triggerEffect") {
+    return { from: entry.move.source, to: entry.move.target };
+  }
+
+  if (entry.move.kind === "compound") {
+    const first = entry.move.actions?.[0];
+    const last = entry.move.actions?.at(-1);
+    return { from: first?.from ?? null, to: last?.to ?? last?.from ?? null };
+  }
+
+  if (entry.move.kind === "buildBase") {
+    return { from: entry.move.actor, to: entry.move.to };
+  }
+
+  return null;
+}
+
+function getCheckedRoyal(state) {
+  if (state.status.type !== "playing") return null;
+  if (!isInCheck(state, state.turn)) return null;
+  const royal = findRoyal(state, state.turn);
+  return royal ? { x: royal.x, y: royal.y } : null;
+}
+
+function sameSquare(a, b) {
+  return Boolean(a && b && a.x === b.x && a.y === b.y);
+}
+
+function createSquareLabel(state, x, y) {
+  const base = findBaseAt(state, x, y);
+  const piece = getSquare(state, x, y);
+  if (!piece && !base) return `${x + 1},${y + 1} 空きマス`;
+  if (!piece && base) {
+    const baseDef = state.ruleset.baseDefs?.[base.kind] ?? state.ruleset.bases?.[base.kind];
+    return `${x + 1},${y + 1} ${base.owner === "black" ? "先手" : "後手"} ${baseDef?.name ?? base.kind}`;
+  }
+
+  const owner = piece.owner === "black" ? "先手" : "後手";
+  const pieceDef = state.ruleset.pieces[piece.id];
+  return `${x + 1},${y + 1} ${owner} ${pieceDef?.name ?? piece.id}`;
+}
+ 
+ 
+
+function findSetupPlacementTo(uiState, x, y) {
+  return (uiState.setupPlacements ?? []).find(action => action.to.x === x && action.to.y === y);
+}
+
+
+function isSetupZoneSquare(state, uiState, x, y) {
+  if (state.phase !== "setup" || !state.setup) return false;
+  const player = uiState.setupPlayer ?? state.setup.currentPlayer ?? state.turn;
+  const zone = state.ruleset.setup?.placementZones?.[player];
+  if (!zone) return false;
+  if (zone.xMin != null && x < zone.xMin) return false;
+  if (zone.xMax != null && x > zone.xMax) return false;
+  if (zone.yMin != null && y < zone.yMin) return false;
+  if (zone.yMax != null && y > zone.yMax) return false;
+  return true;
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: renderConnectionLog.js 
+========================================== 
+ 
+export function renderConnectionLog(element, log) {
+  element.innerHTML = "";
+
+  if (!log?.entries?.length) {
+    const empty = document.createElement("li");
+    empty.className = "connection-log-empty";
+    empty.textContent = "通信ログなし";
+    element.appendChild(empty);
+    return;
+  }
+
+  for (const entry of [...log.entries].reverse()) {
+    const item = document.createElement("li");
+    item.className = `connection-log-item ${entry.level} ${entry.direction}`;
+
+    const meta = document.createElement("span");
+    meta.className = "connection-log-meta";
+    meta.textContent = `${formatTime(entry.at)} ${directionLabel(entry.direction)} ${entry.type}`;
+
+    const text = document.createElement("span");
+    text.className = "connection-log-text";
+    text.textContent = entry.text;
+
+    item.appendChild(meta);
+    item.appendChild(text);
+    element.appendChild(item);
+  }
+}
+
+function formatTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--:--:--";
+  return date.toLocaleTimeString("ja-JP", { hour12: false });
+}
+
+function directionLabel(direction) {
+  if (direction === "out") return "送信";
+  if (direction === "in") return "受信";
+  if (direction === "error") return "エラー";
+  return "内部";
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: renderHands.js 
+========================================== 
+ 
+import { playerName } from "../core/state.js";
+
+export function renderHands(handElement, state, owner, uiState, options = {}) {
+  handElement.innerHTML = "";
+  handElement.dataset.owner = owner;
+  handElement.dataset.position = options.position ?? "";
+  handElement.setAttribute("aria-label", `${playerName(owner)}の持ち駒`);
+  handElement.classList.toggle("active-turn", state.status.type === "playing" && owner === state.turn);
+  handElement.classList.toggle("inactive-turn", state.status.type === "playing" && owner !== state.turn);
+
+  const title = document.createElement("div");
+  title.className = "hand-title";
+  title.textContent = `${playerName(owner)} 持駒`;
+  handElement.appendChild(title);
+
+  const list = document.createElement("div");
+  list.className = "hand-list";
+
+  const entries = createHandEntries(state, owner);
+  if (entries.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "empty-hand";
+    empty.textContent = "なし";
+    list.appendChild(empty);
+  } else {
+    for (const [pieceId, count] of entries) {
+      const pieceDef = state.ruleset.pieces[pieceId];
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "hand-piece";
+      button.dataset.owner = owner;
+      button.dataset.pieceId = pieceId;
+      button.disabled = uiState.readonly || state.status.type !== "playing" || owner !== state.turn;
+      button.textContent = `${pieceDef?.display ?? pieceId}×${count}`;
+      button.title = pieceDef?.name ?? pieceId;
+
+      if (isSelectedHand(uiState, owner, pieceId)) {
+        button.classList.add("selected");
+      }
+
+      list.appendChild(button);
+    }
+  }
+
+  handElement.appendChild(list);
+}
+
+function createHandEntries(state, owner) {
+  const hand = state.hands[owner] ?? {};
+  const order = state.ruleset.handOrder ?? Object.keys(hand);
+  const ordered = [];
+
+  for (const pieceId of order) {
+    const count = hand[pieceId] ?? 0;
+    if (count > 0) ordered.push([pieceId, count]);
+  }
+
+  for (const [pieceId, count] of Object.entries(hand)) {
+    if (count > 0 && !order.includes(pieceId)) {
+      ordered.push([pieceId, count]);
+    }
+  }
+
+  return ordered;
+}
+
+function isSelectedHand(uiState, owner, pieceId) {
+  return (
+    uiState.selected?.kind === "hand" &&
+    uiState.selected.owner === owner &&
+    uiState.selected.pieceId === pieceId
+  );
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: renderHistory.js 
+========================================== 
+ 
+import { formatHistoryEntry } from "../core/notation.js";
+
+export function renderHistory(historyElement, state, uiState) {
+  historyElement.innerHTML = "";
+
+  if (state.history.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "history-empty";
+    empty.textContent = "棋譜なし";
+    historyElement.appendChild(empty);
+    return;
+  }
+
+  state.history.forEach((entry, index) => {
+    const item = document.createElement("li");
+    item.className = "history-item";
+    item.dataset.index = String(index);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "history-button";
+    button.dataset.index = String(index);
+    button.textContent = formatHistoryEntry(entry, state.ruleset, index);
+
+    if (uiState.replayIndex === index + 1) {
+      button.classList.add("current");
+    }
+
+    item.appendChild(button);
+    historyElement.appendChild(item);
+  });
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: renderPieceGuide.js 
+========================================== 
+ 
+import { summarizeCaptureRules } from "../core/capture.js";
+import { getPieceAttributeLabel, getPieceCategoryLabel, getPieceUsageLabel } from "../core/pieceMetadata.js";
+import { resolveDelta } from "../core/moveGenerator.js";
+
+export function renderPieceGuide(container, ruleset) {
+  if (!container || !ruleset) return;
+  container.innerHTML = "";
+
+  const intro = document.createElement("div");
+  intro.className = "piece-guide-intro";
+  intro.innerHTML = `
+    <section>
+      <h3>移動定義</h3>
+      <p>駒の動きはルールセット内の <code>moves</code> 配列から読み取ります。駒を追加する場合も、UI側に個別処理を書かず、駒定義を増やします。</p>
+      <dl class="definition-list">
+        <div><dt><code>step</code></dt><dd>指定方向へ1マス移動します。</dd></div>
+        <div><dt><code>slide</code></dt><dd>指定方向へ、駒や盤端に当たるまで直線移動します。</dd></div>
+        <div><dt><code>jump</code></dt><dd>途中の駒を飛び越えて指定先へ移動します。</dd></div>
+      </dl>
+    </section>
+    <section>
+      <h3>属性・点数</h3>
+      <p><code>description</code> / <code>category</code> / <code>point</code> / <code>attributes</code> / <code>captureRules</code> を駒定義から自動表示します。金・玉・成駒は <code>goldLike</code> を持ちます。</p>
+    </section>
+  `;
+  container.appendChild(intro);
+
+  const groups = groupPieces(ruleset);
+  for (const [category, pieces] of groups) {
+    const section = document.createElement("section");
+    section.className = "piece-guide-category";
+
+    const heading = document.createElement("h3");
+    heading.textContent = getPieceCategoryLabel(category);
+    section.appendChild(heading);
+
+    const list = document.createElement("div");
+    list.className = "piece-card-grid";
+
+    for (const [pieceId, pieceDef] of pieces) {
+      list.appendChild(createPieceCard(ruleset, pieceId, pieceDef));
+    }
+
+    section.appendChild(list);
+    container.appendChild(section);
+  }
+}
+
+function groupPieces(ruleset) {
+  const order = ruleset.handOrder ?? Object.keys(ruleset.pieces ?? {});
+  const ids = [...new Set([...order, ...Object.keys(ruleset.pieces ?? {})])];
+  const map = new Map();
+
+  for (const pieceId of ids) {
+    const pieceDef = ruleset.pieces[pieceId];
+    if (!pieceDef) continue;
+    const category = pieceDef.category ?? "uncategorized";
+    if (!map.has(category)) map.set(category, []);
+    map.get(category).push([pieceId, pieceDef]);
+  }
+
+  const categoryOrder = ["royal", "major", "minor", "promoted", "special", "baseBuilder", "air", "uncategorized"];
+  return [...map.entries()].sort((a, b) => categoryOrder.indexOf(a[0]) - categoryOrder.indexOf(b[0]));
+}
+
+export function createPieceCard(ruleset, pieceId, pieceDef, options = {}) {
+  const card = document.createElement("article");
+  card.className = "piece-guide-card";
+
+  const head = document.createElement("div");
+  head.className = "piece-guide-card-head";
+
+  const piece = document.createElement("button");
+  piece.type = "button";
+  piece.className = "piece-guide-display";
+  piece.textContent = pieceDef.display ?? pieceId;
+  piece.title = pieceDef.promotesTo ? "クリックで成駒の説明を表示/非表示" : "成り先はありません";
+
+  const title = document.createElement("div");
+  const name = document.createElement("strong");
+  name.textContent = `${pieceDef.name ?? pieceId}（${pieceId}）`;
+  const meta = document.createElement("span");
+  meta.className = "piece-guide-meta";
+  meta.textContent = `${getPieceUsageLabel(pieceDef.usage)} / ${getPieceCategoryLabel(pieceDef.category)} / ${pieceDef.point ?? "-"}点`;
+  title.append(name, meta);
+  head.append(piece, title);
+
+  const description = document.createElement("p");
+  description.className = "piece-guide-description";
+  description.textContent = pieceDef.description ?? "説明未設定";
+
+  const tags = document.createElement("div");
+  tags.className = "piece-guide-tags";
+  const attributes = pieceDef.attributes?.length ? pieceDef.attributes : ["属性なし"];
+  for (const attribute of attributes) {
+    const tag = document.createElement("span");
+    tag.className = attribute === "goldLike" ? "piece-guide-tag gold-like" : "piece-guide-tag";
+    tag.textContent = getPieceAttributeLabel(attribute);
+    tags.appendChild(tag);
+  }
+
+  const details = document.createElement("dl");
+  details.className = "piece-guide-details";
+  appendDetail(details, "成り", pieceDef.promotesTo ? `${pieceDef.promotesTo}（${ruleset.pieces[pieceDef.promotesTo]?.name ?? "未定義"}）` : "昇格対象がありません");
+  appendDetail(details, "持ち駒", pieceDef.droppable === false ? "打てない" : "打てる");
+  appendDetail(details, "取られた時", formatCapturedAs(ruleset, pieceDef.capturedAs));
+  appendDetail(details, "捕獲制限", summarizeCaptureRules(pieceDef.captureRules));
+  appendDetail(details, "変身", summarizeTransformOptions(ruleset, pieceDef.transformOptions));
+  appendDetail(details, "効果", summarizeEffects(pieceDef.effects));
+  appendDetail(details, "特殊行動", summarizeActions(pieceDef.actions));
+  appendDetail(details, "移動", summarizeMoves(pieceDef.moves));
+
+  const diagram = createMoveDiagram(pieceDef);
+  card.append(head, description, diagram, tags, details);
+
+  if (pieceDef.promotesTo && ruleset.pieces[pieceDef.promotesTo] && options.includePromotionPanel !== false) {
+    const promotedPanel = createPromotedPiecePanel(ruleset, pieceDef.promotesTo);
+    card.appendChild(promotedPanel);
+    piece.addEventListener("click", event => {
+      event.preventDefault();
+      promotedPanel.hidden = !promotedPanel.hidden;
+      piece.classList.toggle("expanded", !promotedPanel.hidden);
+    });
+  } else {
+    piece.disabled = true;
+  }
+
+  return card;
+}
+
+function createPromotedPiecePanel(ruleset, promotedPieceId) {
+  const promotedDef = ruleset.pieces[promotedPieceId];
+  const panel = document.createElement("div");
+  panel.className = "promoted-piece-panel";
+  panel.hidden = true;
+
+  const title = document.createElement("h4");
+  title.textContent = `成った後: ${promotedDef.name ?? promotedPieceId}（${promotedPieceId}）`;
+
+  const body = document.createElement("div");
+  body.className = "promoted-piece-body";
+
+  const description = document.createElement("p");
+  description.className = "piece-guide-description";
+  description.textContent = promotedDef.description ?? "説明未設定";
+
+  const details = document.createElement("dl");
+  details.className = "piece-guide-details";
+  appendDetail(details, "分類", `${getPieceCategoryLabel(promotedDef.category)} / ${promotedDef.point ?? "-"}点`);
+  appendDetail(details, "取られた時", formatCapturedAs(ruleset, promotedDef.capturedAs));
+  appendDetail(details, "効果", summarizeEffects(promotedDef.effects));
+  appendDetail(details, "特殊行動", summarizeActions(promotedDef.actions));
+  appendDetail(details, "移動", summarizeMoves(promotedDef.moves));
+
+  body.append(createMoveDiagram(promotedDef), description, details);
+  panel.append(title, body);
+  return panel;
+}
+
+function appendDetail(parent, term, value) {
+  const wrapper = document.createElement("div");
+  const dt = document.createElement("dt");
+  const dd = document.createElement("dd");
+  dt.textContent = term;
+  dd.textContent = value;
+  wrapper.append(dt, dd);
+  parent.appendChild(wrapper);
+}
+
+function summarizeMoves(moves = []) {
+  if (!moves.length) return "移動できません";
+  const counts = moves.reduce((acc, move) => {
+    acc[move.kind] = (acc[move.kind] ?? 0) + 1;
+    return acc;
+  }, {});
+  const labels = {
+    step: "1マス移動",
+    slide: "直線移動",
+    jump: "跳躍移動"
+  };
+  const parts = Object.entries(counts).map(([kind, count]) => `${labels[kind] ?? kind} ${count}方向`);
+  return parts.join(" / ");
+}
+
+function formatCapturedAs(ruleset, capturedAs) {
+  if (!capturedAs) return "持ち駒化しない";
+  const capturedDef = ruleset.pieces?.[capturedAs];
+  const name = capturedDef?.name ?? "未定義";
+  const display = capturedDef?.display ? `・${capturedDef.display}` : "";
+  return `${name}${display}（${capturedAs}）として持ち駒に戻る`;
+}
+
+function summarizeTransformOptions(ruleset, options = []) {
+  if (!options.length) return "なし";
+  return options.map(option => {
+    const toPieceId = typeof option === "string" ? option : option.to;
+    const condition = typeof option === "string" ? "ownTurn" : (option.condition ?? "ownTurn");
+    const target = ruleset.pieces[toPieceId];
+    return `${target?.name ?? toPieceId}（${condition}）`;
+  }).join(" / ");
+}
+
+function summarizeEffects(effects = []) {
+  if (!effects.length) return "なし";
+  return effects.map(effect => {
+    if (effect.kind === "promoteNearby") {
+      return `周囲${effect.radius ?? 1}マスの駒を成らせる`;
+    }
+    if (effect.kind === "extraActionOnCapture") {
+      return `捕獲時に追加行動×${effect.actionCount ?? 1}`;
+    }
+    return effect.kind ?? "不明な効果";
+  }).join(" / ");
+}
+
+function summarizeActions(actions = []) {
+  if (!actions.length) return "なし";
+  return actions.map(action => {
+    if (action.kind === "multiMove") {
+      return `${action.count ?? 2}回行動${action.optionalStop ? "（途中停止可）" : ""}`;
+    }
+    if (action.kind === "buildBase") {
+      return `${action.baseType ?? "拠点"}を周囲${action.range ?? 1}マスに建設`;
+    }
+    if (action.kind === "attackBase") {
+      return `拠点に${action.damage ?? 1}点ダメージ`;
+    }
+    return action.kind ?? "不明な特殊行動";
+  }).join(" / ");
+}
+
+export function renderSelectedPieceGuide(container, state, selection) {
+  if (!container) return;
+  container.innerHTML = "";
+  if (!selection || selection.kind !== "board") {
+    container.hidden = true;
+    return;
+  }
+  const piece = state.board.squares[selection.y * state.board.width + selection.x];
+  if (!piece) {
+    container.hidden = true;
+    return;
+  }
+  const pieceDef = state.ruleset.pieces[piece.id];
+  if (!pieceDef) {
+    container.hidden = true;
+    return;
+  }
+  container.hidden = false;
+  const heading = document.createElement("h3");
+  heading.textContent = "選択中の駒説明";
+  container.appendChild(heading);
+  container.appendChild(createPieceCard(state.ruleset, piece.id, pieceDef));
+}
+
+function createMoveDiagram(pieceDef) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "move-diagram";
+  wrapper.setAttribute("aria-label", "駒の動き図");
+  const size = 7;
+  const center = Math.floor(size / 2);
+  const cells = Array.from({ length: size * size }, () => ({ step: false, jump: false, slide: false }));
+
+  for (const move of pieceDef.moves ?? []) {
+    const delta = resolveDelta(move, "black");
+    if (move.kind === "step" || move.kind === "jump") {
+      const x = center + delta.dx;
+      const y = center + delta.dy;
+      if (x >= 0 && y >= 0 && x < size && y < size) cells[y * size + x][move.kind] = true;
+    } else if (move.kind === "slide") {
+      let x = center + delta.dx;
+      let y = center + delta.dy;
+      while (x >= 0 && y >= 0 && x < size && y < size) {
+        cells[y * size + x].slide = true;
+        x += delta.dx;
+        y += delta.dy;
+      }
+    }
+  }
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const cell = document.createElement("span");
+      cell.className = "move-diagram-cell";
+      if (x === center && y === center) {
+        cell.classList.add("origin");
+        cell.textContent = pieceDef.display ?? "駒";
+      } else {
+        const data = cells[y * size + x];
+        if (data.slide) { cell.classList.add("slide"); cell.textContent = "↔"; }
+        if (data.step) { cell.classList.add("step"); cell.textContent = "●"; }
+        if (data.jump) { cell.classList.add("jump"); cell.textContent = "◆"; }
+      }
+      wrapper.appendChild(cell);
+    }
+  }
+  return wrapper;
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: renderSetupPanel.js 
+========================================== 
+ 
+import {
+  calculatePieceSetCost,
+  canFinalizeSetupPlayer,
+  getAllowedSetupPieces,
+  getLegalPlacements,
+  getRemainingSetupBudget,
+  getSelectedSetupCost,
+  getSetupBudget,
+  getSetupConfig,
+  getSetupPlayer,
+  getUnplacedSetupPieces,
+  isSetupActive,
+  isSetupEnabled
+} from "../core/setup.js";
+import { playerName } from "../core/state.js";
+
+export function renderSetupPanel(panel, content, state, uiState) {
+  if (!panel || !content) return;
+  const enabled = isSetupEnabled(state);
+  panel.hidden = false;
+  content.innerHTML = "";
+
+  if (!enabled) {
+    panel.open = false;
+    content.appendChild(paragraph("現在のルールセットは通常初期配置です。編成フェーズはありません。"));
+    return;
+  }
+
+  panel.open = isSetupActive(state) || panel.open;
+  if (!isSetupActive(state)) {
+    content.appendChild(paragraph("編成は完了しています。通常対局中です。"));
+    content.appendChild(createPieceSummary(state));
+    return;
+  }
+
+  const player = uiState.setupPlayer ?? getSetupPlayer(state);
+  const config = getSetupConfig(state);
+  const budget = getSetupBudget(state);
+  const used = getSelectedSetupCost(state, player);
+  const remaining = getRemainingSetupBudget(state, player);
+  const selected = state.setup.selectedPieces[player] ?? {};
+  const unplaced = getUnplacedSetupPieces(state, player);
+
+  const header = document.createElement("div");
+  header.className = "setup-header";
+  header.innerHTML = `
+    <div><strong>${playerName(player)}の編成中</strong>${uiState.setupReadonly ? "（閲覧のみ）" : ""}</div>
+    <div class="setup-budget ${createBudgetClass(remaining, budget)}">点数 ${used}/${budget}（残り ${remaining}）</div>
+    <div>モード: ${createModeLabel(state.setup.mode)}</div>
+  `;
+  content.appendChild(header);
+
+  content.appendChild(createSetupStatusOverview(state, player));
+  content.appendChild(createBudgetWarning(state, player));
+  content.appendChild(createPackComparison(state, config));
+  content.appendChild(createFixedPacks(state, config.fixedPacks ?? []));
+  content.appendChild(createRandomPacks(state));
+  content.appendChild(createPointBuyList(state, player));
+  content.appendChild(createSelectedList(state, player, selected, unplaced));
+  content.appendChild(createPlacementList(state, uiState, player, unplaced));
+
+  const footer = document.createElement("div");
+  footer.className = "setup-actions";
+  const finalize = document.createElement("button");
+  finalize.type = "button";
+  finalize.className = "action-button primary-action";
+  finalize.dataset.setupAction = "finalize";
+  finalize.disabled = !canFinalizeSetupPlayer(state, player);
+  finalize.textContent = `${playerName(player)}の編成を確定`;
+  footer.appendChild(finalize);
+  content.appendChild(footer);
+
+  if (uiState.setupReadonly) {
+    for (const button of content.querySelectorAll("button")) button.disabled = true;
+  }
+}
+
+function createSetupStatusOverview(state, activePlayer) {
+  const section = createSection("編成状況");
+  const grid = document.createElement("div");
+  grid.className = "setup-status-grid";
+
+  for (const player of state.ruleset.players) {
+    const selected = state.setup.selectedPieces[player] ?? {};
+    const unplaced = getUnplacedSetupPieces(state, player);
+    const used = getSelectedSetupCost(state, player);
+    const remaining = getRemainingSetupBudget(state, player);
+    const finalized = state.setup.finalizedPlayers.includes(player);
+    const card = document.createElement("article");
+    card.className = `setup-status-card ${player === activePlayer ? "active" : ""} ${finalized ? "finalized" : ""}`;
+    card.innerHTML = `
+      <h4>${playerName(player)} ${finalized ? "確定済み" : player === activePlayer ? "操作中" : "編成中"}</h4>
+      <p>点数 ${used}/${getSetupBudget(state)}（残り ${remaining}）</p>
+      <p>未配置 ${sumCounts(unplaced)}枚 / 選択 ${sumCounts(selected)}枚</p>
+      <p>選択パック: ${createSelectedPackLabel(state, player)}</p>
+    `;
+    grid.appendChild(card);
+  }
+
+  section.appendChild(grid);
+  section.appendChild(paragraph("通信対戦中は、相手側の編成状況もこの欄で確認できます。"));
+  return section;
+}
+
+function createBudgetWarning(state, player) {
+  const remaining = getRemainingSetupBudget(state, player);
+  const selected = state.setup.selectedPieces[player] ?? {};
+  const unplaced = getUnplacedSetupPieces(state, player);
+  const section = document.createElement("section");
+  section.className = "setup-warning-panel";
+
+  const messages = [];
+  if (remaining === 0) messages.push("残り点数は0です。これ以上追加できません。");
+  else if (remaining <= 2) messages.push(`残り点数が少なくなっています（残り${remaining}点）。`);
+  if (!Object.keys(selected).some(pieceId => state.ruleset.pieces[pieceId]?.royal)) messages.push("王・玉が未選択です。確定には王性の駒が必要です。");
+  const unplacedCount = sumCounts(unplaced);
+  if (unplacedCount > 0) messages.push(`未配置の駒が${unplacedCount}枚あります。配置後に確定できます。`);
+  if (!messages.length) messages.push("編成条件を満たしています。必要に応じて確定できます。");
+
+  section.classList.toggle("ok", messages.length === 1 && messages[0].startsWith("編成条件"));
+  section.innerHTML = `<strong>残り点数・確定条件</strong><ul>${messages.map(message => `<li>${escapeHtml(message)}</li>`).join("")}</ul>`;
+  return section;
+}
+
+function createPackComparison(state, config) {
+  const packs = [
+    ...(config.fixedPacks ?? []).map(pack => ({ ...pack, kind: "固定" })),
+    ...((state.setup.generatedPacks ?? []).map(pack => ({ ...pack, kind: "ランダム" })))
+  ];
+  const section = createSection("パック比較");
+  if (!packs.length) {
+    section.appendChild(paragraph("比較できるパックはまだありません。固定パックまたはランダムパックを表示してください。"));
+    return section;
+  }
+
+  const table = document.createElement("table");
+  table.className = "setup-pack-table";
+  table.innerHTML = `
+    <thead><tr><th>種別</th><th>パック</th><th>点数</th><th>枚数</th><th>王</th><th>内訳</th></tr></thead>
+    <tbody></tbody>
+  `;
+  const body = table.querySelector("tbody");
+  for (const pack of packs) {
+    const tr = document.createElement("tr");
+    const hasRoyal = Object.keys(pack.pieces ?? {}).some(pieceId => state.ruleset.pieces[pieceId]?.royal);
+    tr.innerHTML = `
+      <td>${escapeHtml(pack.kind)}</td>
+      <td>${escapeHtml(pack.name)}</td>
+      <td>${calculatePieceSetCost(state, pack.pieces)}</td>
+      <td>${sumCounts(pack.pieces)}</td>
+      <td>${hasRoyal ? "あり" : "なし"}</td>
+      <td>${escapeHtml(formatPieces(state, pack.pieces))}</td>
+    `;
+    body.appendChild(tr);
+  }
+  section.appendChild(table);
+  return section;
+}
+
+function createFixedPacks(state, packs) {
+  const section = createSection("固定パック選択");
+  if (!packs.length) {
+    section.appendChild(paragraph("固定パックは定義されていません。"));
+    return section;
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "setup-pack-grid";
+  for (const pack of packs) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "setup-pack-button";
+    button.dataset.setupAction = "select-fixed-pack";
+    button.dataset.packId = pack.id;
+    button.innerHTML = `<strong>${escapeHtml(pack.name)}</strong><span>${formatPieces(state, pack.pieces)} / ${calculatePieceSetCost(state, pack.pieces)}点</span>`;
+    grid.appendChild(button);
+  }
+  section.appendChild(grid);
+  return section;
+}
+
+function createRandomPacks(state) {
+  const section = createSection("ランダムパック選択");
+  const actions = document.createElement("div");
+  actions.className = "setup-actions";
+  const generate = document.createElement("button");
+  generate.type = "button";
+  generate.className = "action-button";
+  generate.dataset.setupAction = "generate-random-packs";
+  generate.textContent = "ランダムパック生成";
+  actions.appendChild(generate);
+  section.appendChild(actions);
+
+  const packs = state.setup.generatedPacks ?? [];
+  if (!packs.length) {
+    section.appendChild(paragraph("生成すると、同じseedから再現できる候補パックが表示されます。"));
+    return section;
+  }
+
+  const seed = document.createElement("p");
+  seed.className = "setup-note";
+  seed.textContent = `seed: ${state.setup.randomSeed}`;
+  section.appendChild(seed);
+
+  const grid = document.createElement("div");
+  grid.className = "setup-pack-grid";
+  for (const pack of packs) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "setup-pack-button";
+    button.dataset.setupAction = "select-random-pack";
+    button.dataset.packId = pack.id;
+    button.innerHTML = `<strong>${escapeHtml(pack.name)}</strong><span>${formatPieces(state, pack.pieces)} / ${calculatePieceSetCost(state, pack.pieces)}点</span>`;
+    grid.appendChild(button);
+  }
+  section.appendChild(grid);
+  return section;
+}
+
+function createPointBuyList(state, player) {
+  const section = createSection("点数内で駒選択");
+  const grid = document.createElement("div");
+  grid.className = "setup-piece-grid";
+  const remaining = getRemainingSetupBudget(state, player);
+  for (const pieceId of getAllowedSetupPieces(state)) {
+    const pieceDef = state.ruleset.pieces[pieceId];
+    const point = Number(pieceDef.point ?? 1);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "setup-piece-button";
+    button.dataset.setupAction = "add-piece";
+    button.dataset.pieceId = pieceId;
+    button.disabled = point > remaining;
+    button.innerHTML = `<strong>${pieceDef.display ?? pieceId} ${pieceDef.name ?? pieceId}</strong><span>${point}点 / ${getCategoryText(pieceDef.category)}</span>`;
+    grid.appendChild(button);
+  }
+  section.appendChild(grid);
+  return section;
+}
+
+function createSelectedList(state, player, selected, unplaced) {
+  const section = createSection("選択済み駒一覧");
+  const entries = Object.entries(selected).filter(([, count]) => count > 0);
+  if (!entries.length) {
+    section.appendChild(paragraph("駒を選択するか、パックを選んでください。王は必須です。"));
+    return section;
+  }
+
+  const table = document.createElement("table");
+  table.className = "setup-selected-table";
+  table.innerHTML = `
+    <thead><tr><th>分類</th><th>駒</th><th>点</th><th>選択</th><th>配置済</th><th>未配置</th><th>操作</th></tr></thead>
+    <tbody></tbody>
+  `;
+  const body = table.querySelector("tbody");
+  for (const [pieceId, count] of entries.sort((a, b) => sortPieceEntries(state, a, b))) {
+    const pieceDef = state.ruleset.pieces[pieceId];
+    const placed = (state.setup.placedPieces[player] ?? {})[pieceId] ?? 0;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${getCategoryText(pieceDef.category)}</td>
+      <td>${pieceDef.display ?? pieceId} ${pieceDef.name ?? pieceId}</td>
+      <td>${pieceDef.point ?? 1}</td>
+      <td>${count}</td>
+      <td>${placed}</td>
+      <td>${unplaced[pieceId] ?? 0}</td>
+      <td></td>
+    `;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "action-button compact-action";
+    remove.dataset.setupAction = "remove-piece";
+    remove.dataset.pieceId = pieceId;
+    remove.textContent = "1枚減らす";
+    tr.lastElementChild.appendChild(remove);
+    body.appendChild(tr);
+  }
+  section.appendChild(table);
+  return section;
+}
+
+function createPlacementList(state, uiState, player, unplaced) {
+  const section = createSection("配置フェーズ");
+  const actions = document.createElement("div");
+  actions.className = "setup-actions";
+  const randomPlacement = document.createElement("button");
+  randomPlacement.type = "button";
+  randomPlacement.className = "action-button";
+  randomPlacement.dataset.setupAction = "random-placement";
+  randomPlacement.textContent = "ランダム配置";
+  actions.appendChild(randomPlacement);
+  section.appendChild(actions);
+
+  const entries = Object.entries(unplaced).filter(([, count]) => count > 0);
+  if (!entries.length) {
+    section.appendChild(paragraph("未配置の駒はありません。必要に応じてランダム配置で再配置できます。編成を確定できます。"));
+    return section;
+  }
+
+  const list = document.createElement("div");
+  list.className = "setup-piece-grid";
+  for (const [pieceId, count] of entries.sort((a, b) => sortPieceEntries(state, a, b))) {
+    const pieceDef = state.ruleset.pieces[pieceId];
+    const placements = getLegalPlacements(state, pieceId, player);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "setup-piece-button";
+    button.dataset.setupAction = "select-placement-piece";
+    button.dataset.pieceId = pieceId;
+    button.disabled = placements.length === 0;
+    button.textContent = `${pieceDef.display ?? pieceId}を配置 ×${count}`;
+    if (uiState.setupSelectedPieceId === pieceId) button.classList.add("selected");
+    list.appendChild(button);
+  }
+  section.appendChild(list);
+  section.appendChild(paragraph("配置可能エリアは盤面上に薄く表示されます。ランダム配置では王・玉を中央端へ固定し、その他の駒を配置エリア内に自動配置します。手動配置では、駒を選んでから盤面をクリックしてください。"));
+  return section;
+}
+
+function createPieceSummary(state) {
+  const section = createSection("編成結果");
+  for (const player of state.ruleset.players) {
+    const p = document.createElement("p");
+    p.textContent = `${playerName(player)}: ${formatPieces(state, state.setup?.selectedPieces?.[player] ?? {})}`;
+    section.appendChild(p);
+  }
+  return section;
+}
+
+function createSection(title) {
+  const section = document.createElement("section");
+  section.className = "setup-section";
+  const h3 = document.createElement("h3");
+  h3.textContent = title;
+  section.appendChild(h3);
+  return section;
+}
+
+function paragraph(text) {
+  const p = document.createElement("p");
+  p.className = "setup-note";
+  p.textContent = text;
+  return p;
+}
+
+function formatPieces(state, pieces) {
+  return Object.entries(pieces ?? {})
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => sortPieceEntries(state, a, b))
+    .map(([pieceId, count]) => `${state.ruleset.pieces[pieceId]?.display ?? pieceId}×${count}`)
+    .join(" ") || "なし";
+}
+
+function createModeLabel(mode) {
+  if (mode === "fixedPack") return "固定パック";
+  if (mode === "randomPack") return "ランダムパック";
+  return "点数選択";
+}
+
+function createBudgetClass(remaining, budget) {
+  if (remaining < 0) return "over";
+  if (remaining === 0) return "zero";
+  if (remaining <= Math.max(2, Math.floor(budget * 0.15))) return "low";
+  return "ok";
+}
+
+function createSelectedPackLabel(state, player) {
+  const packId = state.setup.selectedPackIds?.[player];
+  if (!packId) return "未選択";
+  const fixed = (getSetupConfig(state).fixedPacks ?? []).find(pack => pack.id === packId);
+  const random = (state.setup.generatedPacks ?? []).find(pack => pack.id === packId);
+  return fixed?.name ?? random?.name ?? packId;
+}
+
+function sortPieceEntries(state, a, b) {
+  const order = state.ruleset.handOrder ?? Object.keys(state.ruleset.pieces);
+  return order.indexOf(a[0]) - order.indexOf(b[0]);
+}
+
+function sumCounts(counts = {}) {
+  return Object.values(counts).reduce((sum, count) => sum + Number(count ?? 0), 0);
+}
+
+function getCategoryText(category) {
+  const labels = {
+    royal: "王",
+    major: "大駒",
+    minor: "小駒",
+    promoted: "成駒",
+    special: "特殊",
+    baseBuilder: "拠点",
+    air: "空中"
+  };
+  return labels[category] ?? "その他";
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+}
+ 
+ 
+ 
+ 
+========================================== 
+FILE: viewPreferences.js 
+========================================== 
+ 
+export const VIEW_PREFERENCES_KEY = "shogi-html:view-preferences";
+
+export const DEFAULT_VIEW_PREFERENCES = {
+  perspective: "black",
+  showLegalMoves: true,
+  confirmResign: true,
+  confirmReset: true
+};
+
+export function normalizeViewPreferences(value = {}) {
+  return {
+    perspective: value.perspective === "white" ? "white" : "black",
+    showLegalMoves: value.showLegalMoves !== false,
+    confirmResign: value.confirmResign !== false,
+    confirmReset: value.confirmReset !== false
+  };
+}
+
+export function loadViewPreferences(storage = globalThis.localStorage) {
+  if (!storage) return { ...DEFAULT_VIEW_PREFERENCES };
+
+  try {
+    const text = storage.getItem(VIEW_PREFERENCES_KEY);
+    if (!text) return { ...DEFAULT_VIEW_PREFERENCES };
+    return normalizeViewPreferences(JSON.parse(text));
+  } catch (error) {
+    return { ...DEFAULT_VIEW_PREFERENCES };
+  }
+}
+
+export function saveViewPreferences(preferences, storage = globalThis.localStorage) {
+  if (!storage) return;
+
+  try {
+    storage.setItem(VIEW_PREFERENCES_KEY, JSON.stringify(normalizeViewPreferences(preferences)));
+  } catch (error) {
+    // localStorage can be unavailable in private browsing or restricted contexts.
+  }
+}
+ 
+ 
  
  
