@@ -217,12 +217,42 @@ textarea {
   background: transparent;
 }
 
+.square.promotion-target::before {
+  content: "成";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  z-index: 2;
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #9b6b00;
+  border-radius: 999px;
+  background: #fff1a8;
+  color: #5a3a16;
+  font-size: 11px;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.square.inspected-move::after {
+  background: rgb(45 108 223 / 34%);
+}
+
+.square.inspected-move.capture::after {
+  border-color: rgb(45 108 223 / 75%);
+}
+
 .piece {
   position: relative;
   z-index: 1;
-  min-width: 34px;
-  min-height: 40px;
-  padding: 2px 4px 4px;
+  width: calc(var(--square-size) * 0.70);
+  height: calc(var(--square-size) * 0.78);
+  min-width: 0;
+  min-height: 0;
+  padding: 2px 3px 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -230,9 +260,31 @@ textarea {
   border-radius: 8px 8px 5px 5px;
   background: #f9d990;
   font-weight: 800;
-  font-size: 21px;
+  font-size: clamp(14px, calc(var(--square-size) * 0.38), 21px);
   line-height: 1;
+  white-space: nowrap;
   box-shadow: inset 0 -2px 0 rgb(0 0 0 / 10%);
+}
+
+.piece-long-label {
+  font-size: clamp(11px, calc(var(--square-size) * 0.28), 16px);
+}
+
+.piece-major {
+  width: calc(var(--square-size) * 0.76);
+  height: calc(var(--square-size) * 0.82);
+  font-size: clamp(15px, calc(var(--square-size) * 0.40), 22px);
+}
+
+.piece-major.piece-long-label {
+  font-size: clamp(12px, calc(var(--square-size) * 0.31), 17px);
+}
+
+.piece-minor.piece-long-label,
+.piece-special.piece-long-label,
+.piece-baseBuilder.piece-long-label,
+.piece-promoted.piece-long-label {
+  font-size: clamp(10px, calc(var(--square-size) * 0.25), 14px);
 }
 
 .piece.white {
@@ -1394,13 +1446,14 @@ textarea {
   inset: 0;
   z-index: 100;
   display: grid;
-  place-items: center;
+  align-items: end;
+  justify-items: center;
   padding: 16px;
-  background: rgb(0 0 0 / 32%);
+  background: rgb(0 0 0 / 20%);
 }
 
 .promotion-card {
-  width: min(420px, 100%);
+  width: min(520px, 100%);
   padding: 16px;
   border: 2px solid #d7c8aa;
   border-radius: 14px;
@@ -2227,4 +2280,53 @@ textarea {
 
 .setup-actions .action-button[data-setup-action="random-placement"] {
   font-weight: 800;
+}
+
+/* v2.7 promotion targets, inspected opponent moves, and promoted-piece guide */
+.piece-guide-display {
+  color: var(--text);
+  cursor: pointer;
+}
+
+.piece-guide-display:disabled {
+  cursor: default;
+}
+
+.piece-guide-display.expanded {
+  outline: 3px solid var(--selected);
+  outline-offset: 1px;
+}
+
+.promoted-piece-panel {
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px dashed #b08a25;
+  border-radius: 8px;
+  background: #fff8df;
+}
+
+.promoted-piece-panel h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.promoted-piece-body {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+@media (max-width: 560px) {
+  .promotion-dialog {
+    padding: 8px;
+  }
+
+  .promotion-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .promoted-piece-body {
+    grid-template-columns: 1fr;
+  }
 }

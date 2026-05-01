@@ -63,16 +63,18 @@ function groupPieces(ruleset) {
   return [...map.entries()].sort((a, b) => categoryOrder.indexOf(a[0]) - categoryOrder.indexOf(b[0]));
 }
 
-export function createPieceCard(ruleset, pieceId, pieceDef) {
+export function createPieceCard(ruleset, pieceId, pieceDef, options = {}) {
   const card = document.createElement("article");
   card.className = "piece-guide-card";
 
   const head = document.createElement("div");
   head.className = "piece-guide-card-head";
 
-  const piece = document.createElement("span");
+  const piece = document.createElement("button");
+  piece.type = "button";
   piece.className = "piece-guide-display";
   piece.textContent = pieceDef.display ?? pieceId;
+  piece.title = pieceDef.promotesTo ? "クリックで成駒の説明を表示/非表示" : "成り先はありません";
 
   const title = document.createElement("div");
   const name = document.createElement("strong");
@@ -110,7 +112,48 @@ export function createPieceCard(ruleset, pieceId, pieceDef) {
 
   const diagram = createMoveDiagram(pieceDef);
   card.append(head, description, diagram, tags, details);
+
+  if (pieceDef.promotesTo && ruleset.pieces[pieceDef.promotesTo] && options.includePromotionPanel !== false) {
+    const promotedPanel = createPromotedPiecePanel(ruleset, pieceDef.promotesTo);
+    card.appendChild(promotedPanel);
+    piece.addEventListener("click", event => {
+      event.preventDefault();
+      promotedPanel.hidden = !promotedPanel.hidden;
+      piece.classList.toggle("expanded", !promotedPanel.hidden);
+    });
+  } else {
+    piece.disabled = true;
+  }
+
   return card;
+}
+
+function createPromotedPiecePanel(ruleset, promotedPieceId) {
+  const promotedDef = ruleset.pieces[promotedPieceId];
+  const panel = document.createElement("div");
+  panel.className = "promoted-piece-panel";
+  panel.hidden = true;
+
+  const title = document.createElement("h4");
+  title.textContent = `成った後: ${promotedDef.name ?? promotedPieceId}（${promotedPieceId}）`;
+
+  const body = document.createElement("div");
+  body.className = "promoted-piece-body";
+
+  const description = document.createElement("p");
+  description.className = "piece-guide-description";
+  description.textContent = promotedDef.description ?? "説明未設定";
+
+  const details = document.createElement("dl");
+  details.className = "piece-guide-details";
+  appendDetail(details, "分類", `${getPieceCategoryLabel(promotedDef.category)} / ${promotedDef.point ?? "-"}点`);
+  appendDetail(details, "効果", summarizeEffects(promotedDef.effects));
+  appendDetail(details, "特殊行動", summarizeActions(promotedDef.actions));
+  appendDetail(details, "移動", summarizeMoves(promotedDef.moves));
+
+  body.append(createMoveDiagram(promotedDef), description, details);
+  panel.append(title, body);
+  return panel;
 }
 
 function appendDetail(parent, term, value) {
