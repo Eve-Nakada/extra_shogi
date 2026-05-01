@@ -142,20 +142,21 @@ async function renderSignalQr(elements, callbacks = {}) {
 
   elements.signalQrOutput.replaceChildren();
 
-  if (!window.QRCode?.toCanvas) {
+  if (!isQrCreateAvailable()) {
     callbacks.setMessage?.("QRコード生成ライブラリを読み込めませんでした。出力コードのコピーを使ってください。");
-    notifyLog(callbacks, "qr-create-error", "QRCodeライブラリを利用できません。");
+    notifyLog(callbacks, "qr-create-error", "QRCodeライブラリを利用できません。", {
+      hasQRCode: Boolean(window.QRCode),
+      hasNodeQrApi: Boolean(window.QRCode?.toCanvas),
+      hasQrCodeJsApi: typeof window.QRCode === "function"
+    });
     return;
   }
 
   try {
-    const canvas = document.createElement("canvas");
-    await window.QRCode.toCanvas(canvas, text, {
+    await createQrCode(elements.signalQrOutput, text, {
       errorCorrectionLevel: text.length > QR_WARNING_LENGTH ? "L" : "M",
-      margin: 2,
       width: 320
     });
-    elements.signalQrOutput.appendChild(canvas);
 
     const lengthNote = text.length > QR_WARNING_LENGTH
       ? "コードが長いため、読み取りにくい場合はコピー貼り付けを使ってください。"
@@ -166,6 +167,42 @@ async function renderSignalQr(elements, callbacks = {}) {
     callbacks.setMessage?.("QRコードの作成に失敗しました。出力コードが長すぎる可能性があります。");
     notifyLog(callbacks, "qr-create-error", "QRコードの作成に失敗しました。", String(error?.message ?? error));
   }
+}
+
+function isQrCreateAvailable() {
+  return Boolean(window.QRCode?.toCanvas) || typeof window.QRCode === "function";
+}
+
+async function createQrCode(container, text, options = {}) {
+  container.replaceChildren();
+
+  if (window.QRCode?.toCanvas) {
+    const canvas = document.createElement("canvas");
+    await window.QRCode.toCanvas(canvas, text, {
+      errorCorrectionLevel: options.errorCorrectionLevel ?? "M",
+      margin: 2,
+      width: options.width ?? 320
+    });
+    container.appendChild(canvas);
+    return;
+  }
+
+  if (typeof window.QRCode === "function") {
+    const correctLevel = options.errorCorrectionLevel === "L"
+      ? window.QRCode.CorrectLevel?.L
+      : window.QRCode.CorrectLevel?.M;
+    new window.QRCode(container, {
+      text,
+      width: options.width ?? 320,
+      height: options.width ?? 320,
+      colorDark: "#000000",
+      colorLight: "#ffffff",
+      correctLevel: correctLevel ?? window.QRCode.CorrectLevel?.M
+    });
+    return;
+  }
+
+  throw new Error("QRCode library is not available.");
 }
 
 function isBarcodeDetectorAvailable() {
