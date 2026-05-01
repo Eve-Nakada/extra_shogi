@@ -300,7 +300,8 @@ export function initController({ createState, elements, rulesets, rulesetsById, 
 
     initSignalQrTools(elements, {
       setMessage,
-      addLog: (type, text, detail = null) => addLog("local", type, text, detail)
+      addLog: (type, text, detail = null) => addLog("local", type, text, detail),
+      onUpdate: () => renderConnectionLog(elements.connectionLog, connectionLog)
     });
   }
 
